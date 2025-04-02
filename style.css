@@ -1,0 +1,31 @@
+/* --- Base Styles (Keep previous styles) --- */
+body { font-family: sans-serif; display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; padding: 10px; background-color: #f4f4f4; gap: 15px; }
+#controlsAndStats { display: flex; flex-direction: column; gap: 15px; flex: 1 1 350px; min-width: 320px; }
+#simulationContainer { display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 2 1 500px; min-width: 350px; }
+#graphsContainer { display: flex; flex-direction: column; gap: 15px; flex: 1 1 350px; min-width: 320px; }
+#controls, #output, #initialSettings, #environmentSettings, .chart-container { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box; }
+
+/* --- Controls & Settings (Keep previous styles, slight adjustments) --- */
+button { padding: 8px 12px; margin: 5px 5px 5px 0; cursor: pointer; border: none; border-radius: 4px; background-color: #007bff; color: white; font-size: 0.9em; }
+button:disabled { background-color: #cccccc; cursor: not-allowed; }
+button:hover:not(:disabled) { background-color: #0056b3; }
+#controls div, #initialSettings div, #environmentSettings div { margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px;}
+label { margin-right: 5px; font-size: 0.9em; flex-basis: 140px; flex-shrink: 0;}
+input[type=number] { width: 70px; padding: 4px; font-size: 0.9em; margin-right: 10px; } /* Wider for pop cap */
+input[type=range] { flex-grow: 1; cursor: pointer; margin: 0 5px; min-width: 80px;}
+.slider-value { font-size: 0.9em; font-weight: bold; min-width: 45px; text-align: right; }
+input:disabled { cursor: not-allowed; opacity: 0.6; }
+input:disabled + .slider-value { color: #aaa; }
+#placementModeDisplay { font-style: italic; color: #555; font-size: 0.9em; margin-top: 5px; }
+
+/* --- Other Styles (Keep previous styles) --- */
+#output pre { white-space: pre-wrap; word-wrap: break-word; background-color: #e9ecef; padding: 10px; border-radius: 4px; font-size: 0.85em; max-height: 140px; overflow-y: auto; }
+#simulationCanvas { border: 1px solid #ccc; background-color: #f0f0f0; width: 100%; max-width: 600px; aspect-ratio: 1 / 1; display: block; cursor: default; }
+#simulationCanvas.manual-placement-active { cursor: crosshair; }
+.chart-container canvas { max-height: 180px; width: 100% !important; height: auto !important; }
+h1, h2 { text-align: center; color: #333; margin-top: 0; margin-bottom: 10px; font-size: 1.3em; }
+h2 { font-size: 1.1em; }
+
+/* --- Responsive (Keep previous styles) --- */
+@media (max-width: 1100px) { body { flex-direction: column; align-items: center; } #controlsAndStats, #simulationContainer, #graphsContainer { width: 95%; max-width: 700px; flex-basis: auto; } #simulationCanvas { max-width: 100%; } }
+@media (max-width: 480px) { h1 { font-size: 1.1em; } h2 { font-size: 1.0em; } button { font-size: 0.8em; padding: 6px 10px;} label { flex-basis: 120px; font-size: 0.85em;} .slider-value { font-size: 0.85em; } }

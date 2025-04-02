@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EvoSim - Refactored</title>
+    <!-- Link CSS -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Include Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <!-- Column 1: Controls, Settings & Stats -->
+    <div id="controlsAndStats">
+        <h1>EvoSim</h1>
+        <div id="controls">
+            <h2>Controls</h2>
+            <button id="startButton">Start</button>
+            <button id="stopButton" disabled>Stop</button> <!-- Start disabled -->
+            <button id="resetButton">Reset Sim</button>
+            <div>
+                <label for="tickSpeedInput">Tick Speed (ms):</label>
+                <input type="number" id="tickSpeedInput" value="50" min="10">
+            </div>
+             <div>
+                <label for="cellSizeInput">Cell Size (px):</label>
+                <input type="number" id="cellSizeInput" value="5" min="1">
+             </div>
+             <div>
+                 <label for="maxPopulationInput">Max Population:</label>
+                 <input type="number" id="maxPopulationInput" value="5000" min="100" max="10000" step="100">
+             </div>
+        </div>
+
+         <div id="environmentSettings">
+             <h2>Environment Setup</h2>
+             <div>
+                 <label for="gridWidthInput">Grid Width:</label>
+                 <input type="range" id="gridWidthInput" min="20" max="200" step="10" value="100">
+                 <span class="slider-value" id="gridWidthValue">100</span>
+             </div>
+              <div>
+                 <label for="gridHeightInput">Grid Height:</label>
+                 <input type="range" id="gridHeightInput" min="20" max="200" step="10" value="100">
+                 <span class="slider-value" id="gridHeightValue">100</span>
+             </div>
+             <div>
+                 <label for="nodeDensity">Res. Node Density (%):</label>
+                 <input type="range" id="nodeDensity" min="0" max="20" step="0.5" value="5">
+                 <span class="slider-value" id="nodeDensityValue">5.0%</span>
+             </div>
+              <div>
+                 <label>Placement Mode:</label>
+                 <button id="placementModeButton" style="flex-grow: 1;">Mode: Random</button>
+             </div>
+             <div id="placementModeDisplay">Using density slider. Click cells in Manual mode before starting.</div>
+        </div>
+
+        <div id="initialSettings">
+             <h2>Initial Population</h2>
+             <div>
+                 <label for="popDensity">Initial Density (%):</label>
+                 <input type="range" id="popDensity" min="0.1" max="10" step="0.1" value="1.0">
+                 <span class="slider-value" id="popDensityValue">1.0%</span>
+             </div>
+             <div>
+                 <label for="avgMetabolism">Avg Metabolism Eff:</label>
+                 <input type="range" id="avgMetabolism" min="0.5" max="1.5" step="0.05" value="1.0">
+                 <span class="slider-value" id="avgMetabolismValue">1.00</span>
+             </div>
+             <div>
+                 <label for="avgFeeding">Avg Feeding Eff:</label>
+                 <input type="range" id="avgFeeding" min="0.5" max="1.5" step="0.05" value="1.0">
+                 <span class="slider-value" id="avgFeedingValue">1.00</span>
+             </div>
+             <div>
+                 <label for="avgTempTolerance">Avg Temp Tolerance:</label>
+                 <input type="range" id="avgTempTolerance" min="0" max="50" step="1" value="25">
+                 <span class="slider-value" id="avgTempToleranceValue">25</span>
+             </div>
+              <div>
+                 <label for="mutationRate">Mutation Rate (%):</label>
+                 <input type="range" id="mutationRate" min="0" max="20" step="0.5" value="5">
+                 <span class="slider-value" id="mutationRateValue">5.0%</span>
+             </div>
+             <p style="font-size: 0.8em; margin: 5px 0 0 0; color: #555;">(Lower metabolism eff. is better)</p>
+             <button id="resetSettingsButton" style="background-color: #6c757d;">Reset Settings</button>
+        </div>
+
+        <div id="output">
+             <h2>Simulation Stats</h2>
+             <pre id="statsOutput">Loading simulation...</pre>
+        </div>
+    </div>
+
+    <!-- Column 2: Simulation Grid -->
+    <div id="simulationContainer">
+         <h2>Environment Grid</h2>
+         <canvas id="simulationCanvas" width="500" height="500"></canvas> <!-- Default size, will be resized by JS -->
+    </div>
+
+    <!-- Column 3: Graphs -->
+    <div id="graphsContainer">
+         <div class="chart-container"> <h2>Population Count</h2> <canvas id="popChart"></canvas> </div>
+         <div class="chart-container"> <h2>Avg Gene Values</h2> <canvas id="geneChart"></canvas> </div>
+         <div class="chart-container"> <h2>Total Grid Resources</h2> <canvas id="resourceChart"></canvas> </div>
+         <div class="chart-container"> <h2>Allele Frequencies (Temp)</h2> <canvas id="alleleChart"></canvas> </div>
+    </div>
+
+    <!-- Include JavaScript Files -->
+    <!-- Order is important! Config and Utils first, then classes, then main script -->
+    <script src="config.js"></script>
+    <script src="utils.js"></script>
+    <script src="organism.js"></script>
+    <script src="environment.js"></script>
+    <script src="simulation.js"></script>
+    <script src="ui.js"></script>
+    <script src="main.js"></script> <!-- Main initialization script -->
+
+</body>
+</html>

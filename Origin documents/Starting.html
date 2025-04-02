@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EvoSim - Phase 2.2 (UI Fix, Scaling)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* --- Base Styles (Keep previous styles) --- */
+        body { font-family: sans-serif; display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; padding: 10px; background-color: #f4f4f4; gap: 15px; }
+        #controlsAndStats { display: flex; flex-direction: column; gap: 15px; flex: 1 1 350px; min-width: 320px; }
+        #simulationContainer { display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 2 1 500px; min-width: 350px; }
+        #graphsContainer { display: flex; flex-direction: column; gap: 15px; flex: 1 1 350px; min-width: 320px; }
+        #controls, #output, #initialSettings, #environmentSettings, .chart-container { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box; }
+
+        /* --- Controls & Settings (Keep previous styles, slight adjustments) --- */
+        button { padding: 8px 12px; margin: 5px 5px 5px 0; cursor: pointer; border: none; border-radius: 4px; background-color: #007bff; color: white; font-size: 0.9em; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        button:hover:not(:disabled) { background-color: #0056b3; }
+        #controls div, #initialSettings div, #environmentSettings div { margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px;}
+        label { margin-right: 5px; font-size: 0.9em; flex-basis: 140px; flex-shrink: 0;}
+        input[type=number] { width: 70px; padding: 4px; font-size: 0.9em; margin-right: 10px; } /* Wider for pop cap */
+        input[type=range] { flex-grow: 1; cursor: pointer; margin: 0 5px; min-width: 80px;}
+        .slider-value { font-size: 0.9em; font-weight: bold; min-width: 45px; text-align: right; }
+        input:disabled { cursor: not-allowed; opacity: 0.6; }
+        input:disabled + .slider-value { color: #aaa; }
+        #placementModeDisplay { font-style: italic; color: #555; font-size: 0.9em; margin-top: 5px; }
+
+        /* --- Other Styles (Keep previous styles) --- */
+        #output pre { white-space: pre-wrap; word-wrap: break-word; background-color: #e9ecef; padding: 10px; border-radius: 4px; font-size: 0.85em; max-height: 140px; overflow-y: auto; }
+        #simulationCanvas { border: 1px solid #ccc; background-color: #f0f0f0; width: 100%; max-width: 600px; aspect-ratio: 1 / 1; display: block; cursor: default; }
+        #simulationCanvas.manual-placement-active { cursor: crosshair; }
+        .chart-container canvas { max-height: 180px; width: 100% !important; height: auto !important; }
+        h1, h2 { text-align: center; color: #333; margin-top: 0; margin-bottom: 10px; font-size: 1.3em; }
+        h2 { font-size: 1.1em; }
+
+        /* --- Responsive (Keep previous styles) --- */
+        @media (max-width: 1100px) { body { flex-direction: column; align-items: center; } #controlsAndStats, #simulationContainer, #graphsContainer { width: 95%; max-width: 700px; flex-basis: auto; } #simulationCanvas { max-width: 100%; } }
+        @media (max-width: 480px) { h1 { font-size: 1.1em; } h2 { font-size: 1.0em; } button { font-size: 0.8em; padding: 6px 10px;} label { flex-basis: 120px; font-size: 0.85em;} .slider-value { font-size: 0.85em; } }
+    </style>
+</head>
+<body>
+
+    <!-- Column 1: Controls, Settings & Stats -->
+    <div id="controlsAndStats">
+        <h1>EvoSim - Phase 2.2</h1>
+        <div id="controls">
+            <h2>Controls</h2>
+            <button id="startButton">Start</button>
+            <button id="stopButton">Stop</button>
+            <button id="resetButton">Reset Sim</button>
+            <div>
+                <label for="tickSpeedInput">Tick Speed (ms):</label>
+                <input type="number" id="tickSpeedInput" value="50" min="10">
+            </div>
+             <div>
+                <label for="cellSizeInput">Cell Size (px):</label>
+                <input type="number" id="cellSizeInput" value="5" min="1">
+             </div>
+             <div>
+                 <label for="maxPopulationInput">Max Population:</label>
+                 <input type="number" id="maxPopulationInput" value="5000" min="100" max="10000" step="100">
+             </div>
+        </div>
+
+         <div id="environmentSettings">
+             <h2>Environment Setup</h2>
+             <div>
+                 <label for="gridWidthInput">Grid Width:</label>
+                 <input type="range" id="gridWidthInput" min="20" max="200" step="10" value="100">
+                 <span class="slider-value" id="gridWidthValue">100</span>
+             </div>
+              <div>
+                 <label for="gridHeightInput">Grid Height:</label>
+                 <input type="range" id="gridHeightInput" min="20" max="200" step="10" value="100">
+                 <span class="slider-value" id="gridHeightValue">100</span>
+             </div>
+             <div>
+                 <label for="nodeDensity">Res. Node Density (%):</label>
+                 <input type="range" id="nodeDensity" min="0" max="20" step="0.5" value="5">
+                 <span class="slider-value" id="nodeDensityValue">5.0%</span>
+             </div>
+              <div>
+                 <label>Placement Mode:</label>
+                 <button id="placementModeButton" style="flex-grow: 1;">Mode: Random</button>
+             </div>
+             <div id="placementModeDisplay">Using density slider. Click cells in Manual mode before starting.</div>
+        </div>
+
+        <div id="initialSettings">
+             <h2>Initial Population</h2>
+             <div>
+                 <label for="popDensity">Initial Density (%):</label>
+                 <input type="range" id="popDensity" min="0.1" max="10" step="0.1" value="1.0">
+                 <span class="slider-value" id="popDensityValue">1.0%</span>
+             </div>
+             <div>
+                 <label for="avgMetabolism">Avg Metabolism Eff:</label>
+                 <input type="range" id="avgMetabolism" min="0.5" max="1.5" step="0.05" value="1.0">
+                 <span class="slider-value" id="avgMetabolismValue">1.00</span>
+             </div>
+             <div>
+                 <label for="avgFeeding">Avg Feeding Eff:</label>
+                 <input type="range" id="avgFeeding" min="0.5" max="1.5" step="0.05" value="1.0">
+                 <span class="slider-value" id="avgFeedingValue">1.00</span>
+             </div>
+             <div>
+                 <label for="avgTempTolerance">Avg Temp Tolerance:</label>
+                 <input type="range" id="avgTempTolerance" min="0" max="50" step="1" value="25">
+                 <span class="slider-value" id="avgTempToleranceValue">25</span>
+             </div>
+              <div>
+                 <label for="mutationRate">Mutation Rate (%):</label>
+                 <input type="range" id="mutationRate" min="0" max="20" step="0.5" value="5">
+                 <span class="slider-value" id="mutationRateValue">5.0%</span>
+             </div>
+             <p style="font-size: 0.8em; margin: 5px 0 0 0; color: #555;">(Lower metabolism eff. is better)</p>
+             <button id="resetSettingsButton" style="background-color: #6c757d;">Reset Settings</button>
+        </div>
+
+        <div id="output">
+             <h2>Simulation Stats</h2>
+             <pre id="statsOutput">Simulation not started.</pre>
+        </div>
+    </div>
+
+    <!-- Column 2: Simulation Grid -->
+    <div id="simulationContainer">
+         <h2>Environment Grid</h2>
+         <canvas id="simulationCanvas"></canvas>
+    </div>
+
+    <!-- Column 3: Graphs -->
+    <div id="graphsContainer">
+         <div class="chart-container"> <h2>Population Count</h2> <canvas id="popChart"></canvas> </div>
+         <div class="chart-container"> <h2>Avg Gene Values</h2> <canvas id="geneChart"></canvas> </div>
+         <div class="chart-container"> <h2>Total Grid Resources</h2> <canvas id="resourceChart"></canvas> </div>
+         <div class="chart-container"> <h2>Allele Frequencies (Temp)</h2> <canvas id="alleleChart"></canvas> </div>
+    </div>
+
+
+    <script>
+        // --- Constants & Config (More variables now) ---
+        let initialPopulationNum = 100; // Calculated from density
+        let maxPopulation = 5000; // From UI input
+        let gridWidth = 100; // From UI slider
+        let gridHeight = 100; // From UI slider
+
+        const MAX_LIFESPAN = 400; const REPRODUCTION_AGE = 70; const REPRODUCTION_ENERGY_THRESHOLD = 90; const ENERGY_COST_OF_REPRODUCTION = 45; const INITIAL_ENERGY = 60; const MAX_ENERGY = 120; const BASE_ENERGY_COST_PER_TICK = 0.6; const MOVEMENT_ENERGY_COST = 0.15; const FOOD_ENERGY_VALUE = 30; const FOOD_CONSUMPTION_RATE = 0.6; const INITIAL_GENE_VARIATION = 0.2;
+        const TEMP_BASE = 25.0; const TEMP_AMPLITUDE = 15.0; const TEMP_FREQUENCY = 0.001; const TEMP_PENALTY_FACTOR = 0.03;
+        let MUTATION_RATE = 0.05; const MUTATION_AMOUNT = 0.05;
+        let CELL_SIZE = 5; const MAX_HISTORY = 600;
+        const CELL_MAX_RESOURCES = 15.0; let RESOURCE_NODE_DENSITY = 0.05; const NODE_REPLENISH_RATE = 0.25; const NODE_INITIAL_RESOURCES = 7.0; const NON_NODE_INITIAL_RESOURCES = 1.0;
+        const MATING_SEARCH_RADIUS = 2;
+        const ALLELE_TEMP_BINS = { 'Cold': (val) => val < TEMP_BASE - TEMP_AMPLITUDE / 2, 'Mid': (val) => val >= TEMP_BASE - TEMP_AMPLITUDE / 2 && val <= TEMP_BASE + TEMP_AMPLITUDE / 2, 'Warm': (val) => val > TEMP_BASE + TEMP_AMPLITUDE / 2 };
+        const NUM_CLUSTERS = 4; const CLUSTER_RADIUS = 12; const MIN_CLUSTER_DISTANCE = 35;
+
+        let nextOrganismId = 0;
+        const DEFAULT_SETTINGS = {
+             popDensity: 1.0, nodeDensity: 5.0, avgMetabolism: 1.0, avgFeeding: 1.0, avgTempTolerance: 25, mutationRate: 5.0,
+             maxPopulation: 5000, gridWidth: 100, gridHeight: 100 // Added defaults for new settings
+        };
+        let currentInitialSettings = { ...DEFAULT_SETTINGS };
+        let resourcePlacementMode = 'random';
+
+        // --- Utility Functions (Unchanged) ---
+        function getRandom(min, max) { return Math.random() * (max - min) + min; }
+        function getRandomInt(min, max) { min = Math.ceil(min); max = Math.floor(max); return Math.floor(Math.random() * (max - min + 1)) + min; }
+        function clamp(value, min, max) { return Math.max(min, Math.min(value, max)); }
+
+        // --- Classes ---
+        class Organism { /* ... No changes needed ... */ constructor(id, genes, location) { this.id = id; this.species = "BaseSpecies"; this.age = 0; this.energy = INITIAL_ENERGY; this.alive = true; this.location = location; this.genes = genes; this.hasReproducedThisTick = false; } _metabolize(environment) { let cost = BASE_ENERGY_COST_PER_TICK / this.genes.metabolism_efficiency; let tempDifference = Math.abs(environment.temperature - this.genes.temperature_tolerance); cost *= (1 + tempDifference * TEMP_PENALTY_FACTOR); this.energy -= cost; } _feed(environment) { const cell = environment.getCell(this.location.x, this.location.y); if (!cell) return; let canConsume = Math.min(cell.resourceAmount, FOOD_CONSUMPTION_RATE); if (canConsume > 0) { const consumed = environment.consumeResourceAt(this.location.x, this.location.y, canConsume); let energyGained = consumed * FOOD_ENERGY_VALUE * this.genes.feeding_efficiency; this.energy = clamp(this.energy + energyGained, 0, MAX_ENERGY); } } _move() { const dx = getRandomInt(-1, 1); const dy = getRandomInt(-1, 1); this.location.x = (this.location.x + dx + gridWidth) % gridWidth; this.location.y = (this.location.y + dy + gridHeight) % gridHeight; if (dx !== 0 || dy !== 0) { this.energy -= MOVEMENT_ENERGY_COST; } } _checkDeath() { if (this.energy <= 0 || this.age > MAX_LIFESPAN) { this.alive = false; } } _mutateGenes(genesToMutate) { const mutatedGenes = { ...genesToMutate }; const currentMutationRate = MUTATION_RATE; for (const gene in mutatedGenes) { if (Math.random() < currentMutationRate) { let change = getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT); mutatedGenes[gene] += change; if (gene === 'metabolism_efficiency' || gene === 'feeding_efficiency') { mutatedGenes[gene] = clamp(mutatedGenes[gene], 0.1, 2.0); } else if (gene === 'temperature_tolerance') { mutatedGenes[gene] = clamp(mutatedGenes[gene], -10, 60); } } } return mutatedGenes; } reproduce(partner) { const offspringGenes = {}; for (const gene in this.genes) { if (partner.genes.hasOwnProperty(gene)) { offspringGenes[gene] = (this.genes[gene] + partner.genes[gene]) / 2.0; } else { offspringGenes[gene] = this.genes[gene]; } } const finalOffspringGenes = this._mutateGenes(offspringGenes); const offspringLocation = { ...this.location }; return new Organism(nextOrganismId++, finalOffspringGenes, offspringLocation); } passiveUpdate() { if (!this.alive) return; this.age++; this._checkDeath(); } update(environment) { if (!this.alive) return null; this.age++; this._move(); this._metabolize(environment); this._feed(environment); this._checkDeath(); return null; } }
+
+        class Environment {
+             constructor(gWidth, gHeight, nodeDensity, placementMode, manuallyPlacedNodes = []) { // Accept grid dimensions
+                 this.temperature = TEMP_BASE;
+                 this.grid = [];
+                 this.resourceNodes = [];
+                 this.width = gWidth; // Store dimensions
+                 this.height = gHeight;
+                 console.log(`Initializing ${this.width}x${this.height} environment: mode=${placementMode}`);
+
+                 let clusterCenters = [];
+                 if (placementMode === 'clustered') {
+                     clusterCenters = this.generateClusterCenters(NUM_CLUSTERS, MIN_CLUSTER_DISTANCE);
+                     console.log(`Generated ${clusterCenters.length} cluster centers.`);
+                 }
+
+                 for (let y = 0; y < this.height; y++) { // Use this.height
+                     this.grid[y] = [];
+                     for (let x = 0; x < this.width; x++) { // Use this.width
+                         let isNode = false;
+                         if (placementMode === 'clustered') { for (const center of clusterCenters) { const distSq = (x - center.x)**2 + (y - center.y)**2; if (distSq <= CLUSTER_RADIUS**2) { isNode = true; break; } } }
+                         else if (placementMode === 'manual') { isNode = manuallyPlacedNodes.some(node => node.x === x && node.y === y); }
+                         else { isNode = Math.random() < nodeDensity; }
+
+                         this.grid[y][x] = { resourceAmount: isNode ? NODE_INITIAL_RESOURCES : NON_NODE_INITIAL_RESOURCES, isNode: isNode, };
+                         if (isNode) { this.resourceNodes.push({ x, y }); }
+                     }
+                 }
+                 console.log(`Initialized grid with ${this.resourceNodes.length} resource nodes.`);
+             }
+
+             generateClusterCenters(numClusters, minDistance) { // Uses this.width, this.height implicitly via getRandomInt
+                 const centers = []; const minDistanceSq = minDistance ** 2; let attempts = 0; const maxAttempts = numClusters * 100; // More attempts
+                 while (centers.length < numClusters && attempts < maxAttempts) {
+                     attempts++;
+                     const margin = CLUSTER_RADIUS + 2; // Keep centers away from edge
+                     const cx = getRandomInt(margin, this.width - 1 - margin);
+                     const cy = getRandomInt(margin, this.height - 1 - margin);
+                     let tooClose = false;
+                     for (const existingCenter of centers) { const distSq = (cx - existingCenter.x)**2 + (cy - existingCenter.y)**2; if (distSq < minDistanceSq) { tooClose = true; break; } }
+                     if (!tooClose) { centers.push({ x: cx, y: cy }); }
+                 }
+                 if (centers.length < numClusters) { console.warn(`Could only generate ${centers.length}/${numClusters} cluster centers.`); }
+                 return centers;
+             }
+
+             getCell(x, y) { if (x < 0 || x >= this.width || y < 0 || y >= this.height) return null; return this.grid[y][x]; } // Use this.width/height
+             update(currentTick) { this.temperature = TEMP_BASE + TEMP_AMPLITUDE * Math.sin(currentTick * TEMP_FREQUENCY); this.resourceNodes.forEach(nodePos => { const cell = this.grid[nodePos.y][nodePos.x]; if(cell) cell.resourceAmount = clamp(cell.resourceAmount + NODE_REPLENISH_RATE, 0, CELL_MAX_RESOURCES); }); }
+             consumeResourceAt(x, y, amount) { const cell = this.getCell(x, y); if (!cell) return 0; const consumed = Math.min(amount, cell.resourceAmount); cell.resourceAmount -= consumed; return consumed; }
+             getTotalResources() { let total = 0; for (let y = 0; y < this.height; y++) { for (let x = 0; x < this.width; x++) { total += this.grid[y][x].resourceAmount; } } return total; } // Use this.height/width
+             toggleNode(x, y) { if (x < 0 || x >= this.width || y < 0 || y >= this.height) return false; const cell = this.grid[y][x]; cell.isNode = !cell.isNode; cell.resourceAmount = cell.isNode ? NODE_INITIAL_RESOURCES : NON_NODE_INITIAL_RESOURCES; const nodeIndex = this.resourceNodes.findIndex(node => node.x === x && node.y === y); if (cell.isNode && nodeIndex === -1) { this.resourceNodes.push({ x, y }); } else if (!cell.isNode && nodeIndex !== -1) { this.resourceNodes.splice(nodeIndex, 1); } console.log(`Toggled node at (${x}, ${y}). New status: ${cell.isNode}. Total nodes: ${this.resourceNodes.length}`); return true; } // Use this.width/height
+             getManuallyPlacedNodes() { return [...this.resourceNodes]; }
+        }
+
+        class Simulation {
+            constructor(canvasId) {
+                 // Standard properties...
+                 this.organisms = []; this.environment = null; this.tick_count = 0; this.isRunning = false; this.tickInterval = null; this.tickSpeed = 50;
+                 this.canvas = document.getElementById(canvasId); if (!this.canvas) { console.error("FATAL: Canvas element not found!"); return; } this.ctx = this.canvas.getContext('2d');
+                 this.cellSize = CELL_SIZE; // Updated by UI
+                 this.manuallyPlacedNodes = [];
+                 this.simulationHistory = { ticks: [], population: [], totalResources: [], avgMetabolism: [], avgTempTolerance: [], avgFeedingEff: [], freqCold: [], freqMid: [], freqWarm: [] };
+                 this.chartInstances = { pop: null, genes: null, resource: null, allele: null };
+            }
+
+            addCanvasClickListener() { if (!this.canvas) return; this.canvas.addEventListener('click', (event) => { if (this.isRunning || resourcePlacementMode !== 'manual') { return; } const rect = this.canvas.getBoundingClientRect(); const clickX = event.clientX - rect.left; const clickY = event.clientY - rect.top; const gridX = Math.floor(clickX / this.cellSize); const gridY = Math.floor(clickY / this.cellSize); if (this.environment && this.environment.toggleNode(gridX, gridY)) { this.manuallyPlacedNodes = this.environment.getManuallyPlacedNodes(); this._drawSimulation(); } }); console.log("Canvas click listener added."); }
+
+            updateInitialSettingsFromUI() {
+                 try {
+                     // Read percentages
+                     currentInitialSettings.popDensity = parseFloat(document.getElementById('popDensity')?.value || DEFAULT_SETTINGS.popDensity) / 100.0;
+                     currentInitialSettings.nodeDensity = parseFloat(document.getElementById('nodeDensity')?.value || DEFAULT_SETTINGS.nodeDensity) / 100.0;
+                     currentInitialSettings.mutationRate = parseFloat(document.getElementById('mutationRate')?.value || DEFAULT_SETTINGS.mutationRate) / 100.0;
+                     // Read direct values
+                     currentInitialSettings.avgMetabolism = parseFloat(document.getElementById('avgMetabolism')?.value || DEFAULT_SETTINGS.avgMetabolism);
+                     currentInitialSettings.avgFeeding = parseFloat(document.getElementById('avgFeeding')?.value || DEFAULT_SETTINGS.avgFeeding);
+                     currentInitialSettings.avgTempTolerance = parseFloat(document.getElementById('avgTempTolerance')?.value || DEFAULT_SETTINGS.avgTempTolerance);
+                     // Read new settings
+                     currentInitialSettings.maxPopulation = parseInt(document.getElementById('maxPopulationInput')?.value || DEFAULT_SETTINGS.maxPopulation, 10);
+                     currentInitialSettings.gridWidth = parseInt(document.getElementById('gridWidthInput')?.value || DEFAULT_SETTINGS.gridWidth, 10);
+                     currentInitialSettings.gridHeight = parseInt(document.getElementById('gridHeightInput')?.value || DEFAULT_SETTINGS.gridHeight, 10);
+
+                     // Update global simulation parameters derived from settings
+                     RESOURCE_NODE_DENSITY = currentInitialSettings.nodeDensity;
+                     MUTATION_RATE = currentInitialSettings.mutationRate;
+                     maxPopulation = currentInitialSettings.maxPopulation; // Update global
+                     gridWidth = currentInitialSettings.gridWidth;       // Update global
+                     gridHeight = currentInitialSettings.gridHeight;     // Update global
+
+                     const totalCells = gridWidth * gridHeight;
+                     initialPopulationNum = Math.max(1, Math.floor(totalCells * currentInitialSettings.popDensity)); // Use new global
+
+                     console.log(`UI Settings Read: PopCap=${maxPopulation}, Grid=${gridWidth}x${gridHeight}, InitPop=${initialPopulationNum}`);
+                 } catch (e) {
+                     console.error("Error reading settings from UI:", e);
+                 }
+            }
+
+            setSliderControlsDisabled(disabled) {
+                 // Include ALL sliders and relevant inputs/buttons
+                 const ids = [ 'popDensity', 'nodeDensity', 'avgMetabolism', 'avgFeeding', 'avgTempTolerance', 'mutationRate', 'gridWidthInput', 'gridHeightInput', // New sliders
+                               'tickSpeedInput', 'cellSizeInput', 'maxPopulationInput', // Number inputs
+                               'resetSettingsButton', 'placementModeButton' // Buttons
+                            ];
+                 ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
+
+                 // Special logic for nodeDensity slider
+                 const nodeDensitySlider = document.getElementById('nodeDensity');
+                 if (nodeDensitySlider) {
+                     nodeDensitySlider.disabled = disabled || resourcePlacementMode === 'manual' || resourcePlacementMode === 'clustered';
+                 }
+
+                 // Update canvas cursor
+                 if (this.canvas) { this.canvas.classList.toggle('manual-placement-active', !disabled && resourcePlacementMode === 'manual'); }
+             }
+
+             togglePlacementMode() {
+                 if (this.isRunning) return;
+                 const nodeDensitySlider = document.getElementById('nodeDensity');
+                 const modeButton = document.getElementById('placementModeButton');
+                 const modeDisplay = document.getElementById('placementModeDisplay');
+                 if (!nodeDensitySlider || !modeButton || !modeDisplay) { console.error("Placement UI elements missing!"); return; }
+
+                 // Cycle: random -> manual -> clustered -> random
+                 if (resourcePlacementMode === 'random') { resourcePlacementMode = 'manual'; modeButton.textContent = 'Mode: Manual'; modeDisplay.textContent = 'Click grid to toggle resource nodes. Density slider disabled.'; nodeDensitySlider.disabled = true; if(this.canvas) this.canvas.classList.add('manual-placement-active'); this.environment = new Environment(gridWidth, gridHeight, 0, 'manual', this.manuallyPlacedNodes); }
+                 else if (resourcePlacementMode === 'manual') { resourcePlacementMode = 'clustered'; modeButton.textContent = 'Mode: Clustered'; modeDisplay.textContent = `Generating ~${NUM_CLUSTERS} clusters. Density slider disabled. Manual nodes cleared on Reset.`; nodeDensitySlider.disabled = true; if(this.canvas) this.canvas.classList.remove('manual-placement-active'); this.manuallyPlacedNodes = []; this.environment = new Environment(gridWidth, gridHeight, 0, 'clustered'); }
+                 else { resourcePlacementMode = 'random'; modeButton.textContent = 'Mode: Random'; modeDisplay.textContent = 'Using density slider. Manual/cluster nodes cleared on Reset.'; nodeDensitySlider.disabled = false; if(this.canvas) this.canvas.classList.remove('manual-placement-active'); this.manuallyPlacedNodes = []; this.updateInitialSettingsFromUI(); this.environment = new Environment(gridWidth, gridHeight, RESOURCE_NODE_DENSITY, 'random'); }
+                 this._drawSimulation(); // Redraw env after mode change
+                 console.log("Placement mode toggled to:", resourcePlacementMode);
+            }
+
+             resizeCanvas() { if(!this.canvas) return; this.canvas.width = gridWidth * this.cellSize; this.canvas.height = gridHeight * this.cellSize; this._drawSimulation(); } // Uses global vars
+             _clearHistory() { for (const key in this.simulationHistory) { this.simulationHistory[key] = []; } }
+             _initializeCharts() { /* ... No changes needed ... */ this._clearHistory(); const popCtx = document.getElementById('popChart')?.getContext('2d'); const geneCtx = document.getElementById('geneChart')?.getContext('2d'); const resourceCtx = document.getElementById('resourceChart')?.getContext('2d'); const alleleCtx = document.getElementById('alleleChart')?.getContext('2d'); if (!popCtx || !geneCtx || !resourceCtx || !alleleCtx) { console.error("One or more chart canvas contexts not found!"); return; } Object.values(this.chartInstances).forEach(chart => { if (chart) chart.destroy(); }); this.chartInstances = { pop: null, genes: null, resource: null, allele: null }; const baseChartOptions = { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { type: 'linear', title: { display: true, text: 'Tick' } }, y: { beginAtZero: true, title: { display: true, text: 'Value' } } }, elements: { point: { radius: 0 } }, plugins: { legend: { position: 'top' } } }; this.chartInstances.pop = new Chart(popCtx, { type: 'line', data: { labels: [], datasets: [{ label: 'Population', data: [], borderColor: 'rgb(54, 162, 235)', tension: 0.1 }] }, options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { ...baseChartOptions.scales.y, title: { text: 'Count' } } } } }); this.chartInstances.genes = new Chart(geneCtx, { type: 'line', data: { labels: [], datasets: [ { label: 'Avg Metabolism Eff', data: [], borderColor: 'rgb(255, 99, 132)', tension: 0.1, }, { label: 'Avg Temp Tolerance', data: [], borderColor: 'rgb(255, 159, 64)', tension: 0.1, }, { label: 'Avg Feeding Eff', data: [], borderColor: 'rgb(153, 102, 255)', tension: 0.1, } ] }, options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: {...baseChartOptions.scales, y: { beginAtZero: false, title: { display: true, text: 'Avg. Gene Value' } } }} }); this.chartInstances.resource = new Chart(resourceCtx, { type: 'line', data: { labels: [], datasets: [{ label: 'Total Grid Resources', data: [], borderColor: 'rgb(75, 192, 192)', tension: 0.1 }] }, options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { ...baseChartOptions.scales.y, title: { text: 'Total Amount' } } } } }); this.chartInstances.allele = new Chart(alleleCtx, { type: 'line', data: { labels: [], datasets: [ { label: 'Cold Tolerant', data: [], borderColor: 'rgb(0, 100, 255)', tension: 0.1, fill: false }, { label: 'Mid Range', data: [], borderColor: 'rgb(0, 180, 0)', tension: 0.1, fill: false }, { label: 'Warm Tolerant', data: [], borderColor: 'rgb(255, 100, 0)', tension: 0.1, fill: false } ] }, options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { min: 0, max: 1, title: { display: true, text: 'Frequency' } } } } }); console.log("Charts initialized."); }
+             _updateHistoryAndCharts(stats) { /* ... No changes needed ... */ if (!this.environment) return; const totalResources = this.environment.getTotalResources(); this.simulationHistory.ticks.push(this.tick_count); this.simulationHistory.population.push(stats.population); this.simulationHistory.totalResources.push(totalResources); this.simulationHistory.avgMetabolism.push(stats.avgMetabolism); this.simulationHistory.avgTempTolerance.push(stats.avgTempTolerance); this.simulationHistory.avgFeedingEff.push(stats.avgFeedingEff); this.simulationHistory.freqCold.push(stats.alleleFreqs.Cold || 0); this.simulationHistory.freqMid.push(stats.alleleFreqs.Mid || 0); this.simulationHistory.freqWarm.push(stats.alleleFreqs.Warm || 0); if (this.simulationHistory.ticks.length > MAX_HISTORY) { for (const key in this.simulationHistory) { this.simulationHistory[key].shift(); } } if (this.chartInstances.pop) { this.chartInstances.pop.data.labels = this.simulationHistory.ticks; this.chartInstances.pop.data.datasets[0].data = this.simulationHistory.population; this.chartInstances.pop.update('none'); } if (this.chartInstances.genes) { this.chartInstances.genes.data.labels = this.simulationHistory.ticks; this.chartInstances.genes.data.datasets.forEach((ds, i) => { const key = ['avgMetabolism', 'avgTempTolerance', 'avgFeedingEff'][i]; ds.data = this.simulationHistory[key]; }); this.chartInstances.genes.update('none'); } if (this.chartInstances.resource) { this.chartInstances.resource.data.labels = this.simulationHistory.ticks; this.chartInstances.resource.data.datasets[0].data = this.simulationHistory.totalResources; this.chartInstances.resource.update('none'); } if (this.chartInstances.allele) { this.chartInstances.allele.data.labels = this.simulationHistory.ticks; this.chartInstances.allele.data.datasets[0].data = this.simulationHistory.freqCold; this.chartInstances.allele.data.datasets[1].data = this.simulationHistory.freqMid; this.chartInstances.allele.data.datasets[2].data = this.simulationHistory.freqWarm; this.chartInstances.allele.update('none'); } }
+
+             _createInitialPopulation() { // Uses global initialPopulationNum, gridWidth, gridHeight
+                 this.organisms = []; nextOrganismId = 0; const settings = currentInitialSettings; console.log(`Creating ${initialPopulationNum} organisms...`);
+                 for (let i = 0; i < initialPopulationNum; i++) {
+                     const genes = { metabolism_efficiency: clamp(getRandom(settings.avgMetabolism - INITIAL_GENE_VARIATION, settings.avgMetabolism + INITIAL_GENE_VARIATION), 0.1, 2.0), temperature_tolerance: clamp(getRandom(settings.avgTempTolerance - 10, settings.avgTempTolerance + 10), -10, 60), feeding_efficiency: clamp(getRandom(settings.avgFeeding - INITIAL_GENE_VARIATION, settings.avgFeeding + INITIAL_GENE_VARIATION), 0.1, 2.0), };
+                     const location = { x: getRandomInt(0, gridWidth - 1), y: getRandomInt(0, gridHeight - 1) }; // Use global grid size
+                     this.organisms.push(new Organism(nextOrganismId++, genes, location));
+                 }
+                 console.log(`Created initial population of ${this.organisms.length}`);
+             }
+
+            reset() {
+                 console.log("Attempting reset...");
+                 this.stop(); // Ensure stopped first
+                 this.tick_count = 0;
+                 this.updateInitialSettingsFromUI(); // Read ALL settings, calculate derived values
+                 // Correctly create Environment with current grid size and mode settings
+                 const densityForEnv = (resourcePlacementMode === 'random') ? RESOURCE_NODE_DENSITY : 0;
+                 const nodesForEnv = (resourcePlacementMode === 'manual') ? this.manuallyPlacedNodes : [];
+                 this.environment = new Environment( gridWidth, gridHeight, densityForEnv, resourcePlacementMode, nodesForEnv );
+                 // Resize canvas AFTER getting grid size from UI
+                 this.resizeCanvas();
+                 this._createInitialPopulation(); // Uses derived initialPopulationNum
+                 this._initializeCharts();
+                 const initialStats = this._calculateStats();
+                 this._updateStatsDisplay(initialStats);
+                 this._updateHistoryAndCharts(initialStats);
+                 this._drawSimulation();
+                 this.setSliderControlsDisabled(false); // Enable controls AFTER setup
+                 const startBtn = document.getElementById('startButton'); if(startBtn) startBtn.disabled = false;
+                 const stopBtn = document.getElementById('stopButton'); if(stopBtn) stopBtn.disabled = true;
+                 console.log("Simulation reset complete.");
+            }
+
+            start() {
+                 if (this.isRunning) { console.warn("Start clicked but already running."); return; }
+                 console.log("Starting simulation...");
+                 this.updateInitialSettingsFromUI(); // Read settings one last time
+                 // Ensure environment exists and matches settings (esp. grid size, mode)
+                 if (!this.environment || this.environment.width !== gridWidth || this.environment.height !== gridHeight) {
+                      console.warn("Environment missing or size mismatch, recreating before start...");
+                      const densityForEnv = (resourcePlacementMode === 'random') ? RESOURCE_NODE_DENSITY : 0;
+                      const nodesForEnv = (resourcePlacementMode === 'manual') ? this.manuallyPlacedNodes : [];
+                      this.environment = new Environment( gridWidth, gridHeight, densityForEnv, resourcePlacementMode, nodesForEnv );
+                      this.resizeCanvas(); // Ensure canvas size matches new grid size
+                 } else if (resourcePlacementMode === 'manual' && this.environment.resourceNodes.length !== this.manuallyPlacedNodes.length) {
+                     console.log("Recreating environment for manual mode before start to sync nodes...");
+                     this.environment = new Environment(gridWidth, gridHeight, 0, 'manual', this.manuallyPlacedNodes);
+                 } else if (resourcePlacementMode === 'clustered' && !this.environment.grid[0][0].isNode === (Math.random() < RESOURCE_NODE_DENSITY)) { // Heuristic check if it's not clustered
+                     console.log("Recreating clustered environment before start...");
+                     this.environment = new Environment(gridWidth, gridHeight, 0, 'clustered');
+                 }
+                 // Ensure canvas size matches grid dimensions before starting drawing loop
+                 this.resizeCanvas();
+
+                 this.setSliderControlsDisabled(true); // Disable controls
+                 if (this.tickInterval) clearInterval(this.tickInterval); // Clear just in case
+                 this.isRunning = true;
+                 this.tickInterval = setInterval(() => { if (this) this.tick() }, this.tickSpeed); // Safer interval call
+                 console.log(`Simulation started interval ID: ${this.tickInterval}, Speed: ${this.tickSpeed}ms.`);
+                 const startBtn = document.getElementById('startButton'); if(startBtn) startBtn.disabled = true;
+                 const stopBtn = document.getElementById('stopButton'); if(stopBtn) stopBtn.disabled = false;
+            }
+
+            stop() { if (!this.isRunning) return; console.log(`Stopping simulation interval ID: ${this.tickInterval}`); this.isRunning = false; clearInterval(this.tickInterval); this.tickInterval = null; const startBtn = document.getElementById('startButton'); if(startBtn) startBtn.disabled = false; const stopBtn = document.getElementById('stopButton'); if(stopBtn) stopBtn.disabled = true; /* Controls remain disabled until reset */ console.log("Simulation stopped."); }
+            setTickSpeed(speed) { try { speed = parseInt(speed, 10); if (isNaN(speed) || speed < 10) speed = 10; this.tickSpeed = speed; const inputEl = document.getElementById('tickSpeedInput'); if (inputEl) inputEl.value = this.tickSpeed; if (this.isRunning) { clearInterval(this.tickInterval); this.tickInterval = setInterval(() => { if(this) this.tick() }, this.tickSpeed); console.log(`Simulation interval restarted with speed ${this.tickSpeed}ms.`); } } catch(e) { console.error("Error setting tick speed", e); } }
+            setCellSize(size) { try { size = parseInt(size, 10); if (isNaN(size) || size < 1) size = 1; this.cellSize = size; const inputEl = document.getElementById('cellSizeInput'); if(inputEl) inputEl.value = this.cellSize; this.resizeCanvas(); console.log(`Cell size set to ${this.cellSize}px.`); } catch(e) { console.error("Error setting cell size", e); } }
+
+            tick() { // Main simulation loop uses global maxPopulation
+                 if (!this.isRunning || !this.environment) return;
+                 try {
+                     this.tick_count++;
+                     this.environment.update(this.tick_count);
+                     this.organisms.forEach(org => org.hasReproducedThisTick = false);
+                     const newborns = []; const potentialParents = [];
+                     for (let i = this.organisms.length - 1; i >= 0; i--) { const org = this.organisms[i]; org.update(this.environment); if (org.alive) { if (org.age >= REPRODUCTION_AGE && org.energy >= REPRODUCTION_ENERGY_THRESHOLD) { potentialParents.push(org); } } }
+                     shuffleArray(potentialParents);
+                     const spatialLookup = this.buildSpatialLookup(this.organisms);
+                     for (const parentA of potentialParents) { if (parentA.hasReproducedThisTick || !parentA.alive) continue; const partner = this.findPartner(parentA, spatialLookup); if (partner) { const offspring = parentA.reproduce(partner); parentA.energy -= ENERGY_COST_OF_REPRODUCTION; partner.energy -= ENERGY_COST_OF_REPRODUCTION; parentA.hasReproducedThisTick = true; partner.hasReproducedThisTick = true; if (this.organisms.length + newborns.length < maxPopulation) { newborns.push(offspring); } } } // Use global maxPopulation
+                     this.organisms.push(...newborns); this.organisms = this.organisms.filter(org => org.alive);
+                     const currentStats = this._calculateStats(); this._updateStatsDisplay(currentStats); this._updateHistoryAndCharts(currentStats); this._drawSimulation();
+                     if (this.organisms.length === 0) { console.log("Population died out."); this.stop(); }
+                 } catch (e) { console.error("Error during simulation tick:", e); this.stop(); }
+            }
+
+            buildSpatialLookup(organisms) { /* ... Unchanged ... */ const lookup = {}; organisms.forEach(org => { if (!org.alive) return; const key = `${org.location.x},${org.location.y}`; if (!lookup[key]) { lookup[key] = []; } lookup[key].push(org); }); return lookup; }
+            findPartner(parentA, spatialLookup) { /* ... Unchanged ... */ const { x: startX, y: startY } = parentA.location; const radius = MATING_SEARCH_RADIUS; for (let dx = -radius; dx <= radius; dx++) { for (let dy = -radius; dy <= radius; dy++) { if (dx === 0 && dy === 0) continue; const checkX = (startX + dx + gridWidth) % gridWidth; const checkY = (startY + dy + gridHeight) % gridHeight; const key = `${checkX},${checkY}`; if (spatialLookup[key]) { for (const potentialPartner of spatialLookup[key]) { if ( potentialPartner.id !== parentA.id && potentialPartner.alive && !potentialPartner.hasReproducedThisTick && potentialPartner.age >= REPRODUCTION_AGE && potentialPartner.energy >= REPRODUCTION_ENERGY_THRESHOLD ) { return potentialPartner; } } } } } const ownCellKey = `${startX},${startY}`; if(spatialLookup[ownCellKey]) { for (const potentialPartner of spatialLookup[ownCellKey]) { if (potentialPartner.id !== parentA.id && potentialPartner.alive && !potentialPartner.hasReproducedThisTick && potentialPartner.age >= REPRODUCTION_AGE && potentialPartner.energy >= REPRODUCTION_ENERGY_THRESHOLD) { return potentialPartner; } } } return null; }
+            _calculateStats() { /* ... Unchanged ... */ const popSize = this.organisms.length; const stats = { population: popSize, avgMetabolism: NaN, avgTempTolerance: NaN, avgFeedingEff: NaN, alleleFreqs: { 'Cold': 0, 'Mid': 0, 'Warm': 0 } }; if (popSize === 0) return stats; let totalMetabolism = 0, totalTempTolerance = 0, totalFeedingEff = 0; this.organisms.forEach(org => { totalMetabolism += org.genes.metabolism_efficiency; totalTempTolerance += org.genes.temperature_tolerance; totalFeedingEff += org.genes.feeding_efficiency; const tempVal = org.genes.temperature_tolerance; if (ALLELE_TEMP_BINS.Cold(tempVal)) stats.alleleFreqs.Cold++; else if (ALLELE_TEMP_BINS.Mid(tempVal)) stats.alleleFreqs.Mid++; else if (ALLELE_TEMP_BINS.Warm(tempVal)) stats.alleleFreqs.Warm++; }); stats.avgMetabolism = totalMetabolism / popSize; stats.avgTempTolerance = totalTempTolerance / popSize; stats.avgFeedingEff = totalFeedingEff / popSize; for (const bin in stats.alleleFreqs) { stats.alleleFreqs[bin] /= popSize; } return stats; }
+
+            _updateStatsDisplay(stats) { // Uses global maxPopulation
+                 const el = document.getElementById('statsOutput'); if(!el || !this.environment) return;
+                 el.textContent = `Tick: ${this.tick_count}\n` +
+                                 `Population: ${stats.population} / ${maxPopulation}\n` + // Use global
+                                 `Environment Temp: ${this.environment.temperature.toFixed(1)}°C\n` +
+                                 `Avg. Metabolism Eff: ${isNaN(stats.avgMetabolism)?'N/A':stats.avgMetabolism.toFixed(3)} (L)\n` +
+                                 `Avg. Temp Tolerance: ${isNaN(stats.avgTempTolerance)?'N/A':stats.avgTempTolerance.toFixed(3)}\n` +
+                                 `Avg. Feeding Eff: ${isNaN(stats.avgFeedingEff)?'N/A':stats.avgFeedingEff.toFixed(3)} (H)`;
+            }
+
+            _drawSimulation() { // Uses global gridWidth, gridHeight
+                 if (!this.environment || !this.ctx || !this.canvas) return; const ctx = this.ctx; const width = this.canvas.width; const height = this.canvas.height; const cellSz = this.cellSize; ctx.fillStyle = '#DDDDDD'; ctx.fillRect(0, 0, width, height); const maxRes = CELL_MAX_RESOURCES;
+                 for (let y = 0; y < gridHeight; y++) { // Use global
+                     for (let x = 0; x < gridWidth; x++) { // Use global
+                         const cell = this.environment.getCell(x, y); if (!cell) continue;
+                         const resourceRatio = clamp(cell.resourceAmount / maxRes, 0, 1); const greenIntensity = Math.floor(180 + resourceRatio * 75); const baseIntensity = Math.floor(245 - resourceRatio * 45); ctx.fillStyle = `rgb(${baseIntensity - 30}, ${greenIntensity}, ${baseIntensity - 30})`; ctx.fillRect(x * cellSz, y * cellSz, cellSz, cellSz);
+                         if (cell.isNode) { const isManualPreview = resourcePlacementMode === 'manual' && !this.isRunning; ctx.strokeStyle = isManualPreview ? 'rgba(0, 0, 200, 0.9)' : 'rgba(0, 60, 0, 0.6)'; ctx.lineWidth = Math.max(1, cellSz * (isManualPreview ? 0.2 : 0.1)); ctx.strokeRect(x * cellSz + ctx.lineWidth/2, y * cellSz + ctx.lineWidth/2, cellSz - ctx.lineWidth, cellSz - ctx.lineWidth); }
+                     }
+                 }
+                 ctx.fillStyle = '#480048'; const size = Math.max(1, cellSz * 0.75); const offset = (cellSz - size) / 2;
+                 this.organisms.forEach(org => { if (!org.alive) return; const drawX = org.location.x * cellSz + offset; const drawY = org.location.y * cellSz + offset; ctx.fillRect(drawX, drawY, size, size); });
+            }
+        }
+
+        // --- Global Simulation Instance ---
+        let simulation;
+
+        // --- Utility: Shuffle Array ---
+        function shuffleArray(array) { /* ... Unchanged ... */ for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [array[i], array[j]] = [array[j], array[i]]; } }
+
+        // --- Wait for DOM Ready ---
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("DOM Loaded. Initializing Simulation and UI...");
+
+            // --- Create Simulation Instance ---
+            simulation = new Simulation('simulationCanvas');
+            if (!simulation || !simulation.canvas) { console.error("Sim/Canvas failed init."); return; }
+
+            // --- Attach Event Listeners ---
+
+            // Control buttons
+            document.getElementById('startButton')?.addEventListener('click', () => simulation.start());
+            document.getElementById('stopButton')?.addEventListener('click', () => simulation.stop());
+            document.getElementById('resetButton')?.addEventListener('click', () => simulation.reset());
+            document.getElementById('placementModeButton')?.addEventListener('click', () => simulation.togglePlacementMode());
+
+            // Sim parameter inputs (Tick Speed, Cell Size, Max Pop)
+            document.getElementById('tickSpeedInput')?.addEventListener('change', (event) => simulation.setTickSpeed(event.target.value));
+            document.getElementById('cellSizeInput')?.addEventListener('change', (event) => simulation.setCellSize(event.target.value));
+            document.getElementById('maxPopulationInput')?.addEventListener('change', (event) => {
+                // Update setting immediately if not running
+                if (!simulation.isRunning) {
+                    simulation.updateInitialSettingsFromUI();
+                }
+            });
+
+            // Settings Sliders & Reset Button
+            const sliderConfigs = [
+                { id: 'popDensity', suffix: '%', decimals: 1 },
+                { id: 'nodeDensity', suffix: '%', decimals: 1 },
+                { id: 'avgMetabolism', suffix: '', decimals: 2 },
+                { id: 'avgFeeding', suffix: '', decimals: 2 },
+                { id: 'avgTempTolerance', suffix: '', decimals: 0 },
+                { id: 'mutationRate', suffix: '%', decimals: 1 },
+                { id: 'gridWidthInput', targetVar: 'gridWidth', suffix: '', decimals: 0, spanId: 'gridWidthValue' }, // Added grid sliders
+                { id: 'gridHeightInput', targetVar: 'gridHeight', suffix: '', decimals: 0, spanId: 'gridHeightValue' }
+            ];
+
+            sliderConfigs.forEach(config => {
+                const slider = document.getElementById(config.id);
+                const valueSpan = document.getElementById(config.spanId || `${config.id}Value`); // Use specific spanId if provided
+                if (slider && valueSpan) {
+                    slider.addEventListener('input', () => {
+                        const newValue = parseFloat(slider.value);
+                        valueSpan.textContent = newValue.toFixed(config.decimals) + (config.suffix || '');
+                        // Update settings immediately only if not running
+                        if (!simulation.isRunning) {
+                           simulation.updateInitialSettingsFromUI();
+                           // If grid size changed, need to resize canvas preview immediately
+                           if (config.targetVar === 'gridWidth' || config.targetVar === 'gridHeight') {
+                               simulation.resizeCanvas();
+                               // Recreate env preview with new size? Reset handles this more robustly.
+                               // simulation.reset(); // Maybe too heavy for slider input.
+                           }
+                        }
+                    });
+                    // Set initial display text
+                    valueSpan.textContent = parseFloat(slider.value).toFixed(config.decimals) + (config.suffix || '');
+                } else { console.error(`Slider or value span not found for: ${config.id}`); }
+            });
+
+            document.getElementById('resetSettingsButton')?.addEventListener('click', () => {
+                 console.log("Resetting settings to default.");
+                 // Reset sliders and number inputs
+                 sliderConfigs.forEach(config => {
+                    const slider = document.getElementById(config.id);
+                    if(slider) {
+                        let defaultValue = DEFAULT_SETTINGS[config.targetVar || config.id]; // Use targetVar if defined
+                        if (config.suffix === '%') defaultValue *= 100;
+                        slider.value = defaultValue;
+                        slider.dispatchEvent(new Event('input')); // Update display
+                    }
+                 });
+                 // Reset Max Pop separately
+                 const maxPopInput = document.getElementById('maxPopulationInput');
+                 if (maxPopInput) maxPopInput.value = DEFAULT_SETTINGS.maxPopulation;
+
+                 simulation.updateInitialSettingsFromUI(); // Update internal settings
+                 // If not running, resize canvas to default
+                 if (!simulation.isRunning) {
+                    simulation.resizeCanvas();
+                    // Maybe force env recreate based on defaults? Reset button better.
+                 }
+            });
+
+            // Canvas Click Listener
+            simulation.addCanvasClickListener();
+
+            // --- Set Initial State ---
+            console.log("Setting initial simulation state...");
+            try {
+                // Read initial values from all UI controls before first reset
+                simulation.updateInitialSettingsFromUI();
+                simulation.setTickSpeed(document.getElementById('tickSpeedInput')?.value || 50);
+                simulation.setCellSize(document.getElementById('cellSizeInput')?.value || 5);
+                simulation.reset(); // This now uses all current settings read by updateInitialSettingsFromUI
+            } catch(e) { console.error("Error during initial setup:", e); }
+
+            console.log("UI Initialization complete.");
+        }); // End DOMContentLoaded
+
+    </script>
+
+</body>
+</html>
