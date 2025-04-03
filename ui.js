@@ -173,10 +173,11 @@ class UIManager {
         this.simulationHistory.avgPreyMetabolism.push(stats.avgPreyMetabolism);
         this.simulationHistory.avgPreyTempTolerance.push(stats.avgPreyTempTolerance);
         this.simulationHistory.avgPreyFeedingEff.push(stats.avgPreyFeedingEff);
-        // Use preyAlleleFreqs from the stats object
-        this.simulationHistory.freqCold.push(stats.preyAlleleFreqs?.Cold || 0);
-        this.simulationHistory.freqMid.push(stats.preyAlleleFreqs?.Mid || 0);
-        this.simulationHistory.freqWarm.push(stats.preyAlleleFreqs?.Warm || 0);
+        // Use preyAlleleFreqs from the stats object, ensuring it exists
+        const freqs = stats?.preyAlleleFreqs; // Optional chaining for stats as well
+        this.simulationHistory.freqCold.push(freqs?.Cold || 0);
+        this.simulationHistory.freqMid.push(freqs?.Mid || 0);
+        this.simulationHistory.freqWarm.push(freqs?.Warm || 0);
 
         // Limit history size
         if (this.simulationHistory.ticks.length > MAX_HISTORY) { // MAX_HISTORY from config.js
