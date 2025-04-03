@@ -9,7 +9,7 @@ class UIManager {
     constructor(simulationInstance) {
         this.simulation = simulationInstance;
         this.chartInstances = { pop: null, genes: null, resource: null, allele: null };
-        this.simulationHistory = { ticks: [], population: [], totalResources: [], avgMetabolism: [], avgTempTolerance: [], avgFeedingEff: [], freqCold: [], freqMid: [], freqWarm: [] };
+        this.simulationHistory = { ticks: [], preyPopulation: [], predatorPopulation: [], totalResources: [], avgPreyMetabolism: [], avgPreyTempTolerance: [], avgPreyFeedingEff: [], freqCold: [], freqMid: [], freqWarm: [] };
 
         // Store references to frequently used DOM elements
         this.elements = {
@@ -118,7 +118,10 @@ class UIManager {
         // --- Population Chart ---
         this.chartInstances.pop = new Chart(popCtx, {
             type: 'line',
-            data: { labels: [], datasets: [{ label: 'Population', data: [], borderColor: 'rgb(54, 162, 235)', tension: 0.1 }] },
+            data: { labels: [], datasets: [
+                { label: 'Prey', data: [], borderColor: 'rgb(54, 162, 235)', tension: 0.1 },
+                { label: 'Predators', data: [], borderColor: 'rgb(255, 99, 132)', tension: 0.1 }
+            ] },
             options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { ...baseChartOptions.scales.y, title: { text: 'Count' } } } }
         });
 
@@ -128,9 +131,9 @@ class UIManager {
             data: {
                 labels: [],
                 datasets: [
-                    { label: 'Avg Metabolism Eff', data: [], borderColor: 'rgb(255, 99, 132)', tension: 0.1, }, // Lower is better
-                    { label: 'Avg Temp Tolerance', data: [], borderColor: 'rgb(255, 159, 64)', tension: 0.1, },
-                    { label: 'Avg Feeding Eff', data: [], borderColor: 'rgb(153, 102, 255)', tension: 0.1, } // Higher is better
+                    { label: 'Avg Prey Metabolism Eff', data: [], borderColor: 'rgb(255, 99, 132)', tension: 0.1, }, // Lower is better
+                    { label: 'Avg Prey Temp Tolerance', data: [], borderColor: 'rgb(255, 159, 64)', tension: 0.1, },
+                    { label: 'Avg Prey Feeding Eff', data: [], borderColor: 'rgb(153, 102, 255)', tension: 0.1, } // Higher is better
                 ]
             },
             options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: {...baseChartOptions.scales, y: { beginAtZero: false, title: { display: true, text: 'Avg. Gene Value' } } }}
@@ -164,14 +167,16 @@ class UIManager {
     _updateHistoryAndCharts(tick, stats, totalResources) {
         // Add data to history
         this.simulationHistory.ticks.push(tick);
-        this.simulationHistory.population.push(stats.population);
+        this.simulationHistory.preyPopulation.push(stats.preyPopulation);
+        this.simulationHistory.predatorPopulation.push(stats.predatorPopulation);
         this.simulationHistory.totalResources.push(totalResources);
-        this.simulationHistory.avgMetabolism.push(stats.avgMetabolism);
-        this.simulationHistory.avgTempTolerance.push(stats.avgTempTolerance);
-        this.simulationHistory.avgFeedingEff.push(stats.avgFeedingEff);
-        this.simulationHistory.freqCold.push(stats.alleleFreqs.Cold || 0);
-        this.simulationHistory.freqMid.push(stats.alleleFreqs.Mid || 0);
-        this.simulationHistory.freqWarm.push(stats.alleleFreqs.Warm || 0);
+        this.simulationHistory.avgPreyMetabolism.push(stats.avgPreyMetabolism);
+        this.simulationHistory.avgPreyTempTolerance.push(stats.avgPreyTempTolerance);
+        this.simulationHistory.avgPreyFeedingEff.push(stats.avgPreyFeedingEff);
+        // Use preyAlleleFreqs from the stats object
+        this.simulationHistory.freqCold.push(stats.preyAlleleFreqs?.Cold || 0);
+        this.simulationHistory.freqMid.push(stats.preyAlleleFreqs?.Mid || 0);
+        this.simulationHistory.freqWarm.push(stats.preyAlleleFreqs?.Warm || 0);
 
         // Limit history size
         if (this.simulationHistory.ticks.length > MAX_HISTORY) { // MAX_HISTORY from config.js
@@ -183,14 +188,15 @@ class UIManager {
         // Update charts efficiently using 'none' transition
         if (this.chartInstances.pop) {
             this.chartInstances.pop.data.labels = this.simulationHistory.ticks;
-            this.chartInstances.pop.data.datasets[0].data = this.simulationHistory.population;
+            this.chartInstances.pop.data.datasets[0].data = this.simulationHistory.preyPopulation;
+            this.chartInstances.pop.data.datasets[1].data = this.simulationHistory.predatorPopulation;
             this.chartInstances.pop.update('none');
         }
         if (this.chartInstances.genes) {
             this.chartInstances.genes.data.labels = this.simulationHistory.ticks;
-            this.chartInstances.genes.data.datasets[0].data = this.simulationHistory.avgMetabolism;
-            this.chartInstances.genes.data.datasets[1].data = this.simulationHistory.avgTempTolerance;
-            this.chartInstances.genes.data.datasets[2].data = this.simulationHistory.avgFeedingEff;
+            this.chartInstances.genes.data.datasets[0].data = this.simulationHistory.avgPreyMetabolism;
+            this.chartInstances.genes.data.datasets[1].data = this.simulationHistory.avgPreyTempTolerance;
+            this.chartInstances.genes.data.datasets[2].data = this.simulationHistory.avgPreyFeedingEff;
             this.chartInstances.genes.update('none');
         }
         if (this.chartInstances.resource) {
@@ -306,12 +312,15 @@ class UIManager {
      */
     updateStatsDisplay(tick, stats, temperature) {
         if (!this.elements.statsOutput) return;
+        if (!this.elements.statsOutput || !stats) return; // Add null check for stats
+        const totalPop = stats.preyPopulation + stats.predatorPopulation;
         this.elements.statsOutput.textContent = `Tick: ${tick}\n` +
-            `Population: ${stats.population} / ${this.simulation.config.maxPopulation}\n` +
+            `Total Pop: ${totalPop} / ${this.simulation.config.maxPopulation} (Prey: ${stats.preyPopulation}, Pred: ${stats.predatorPopulation})\n` +
             `Environment Temp: ${temperature.toFixed(1)}°C\n` +
-            `Avg. Metabolism Eff: ${isNaN(stats.avgMetabolism) ? 'N/A' : stats.avgMetabolism.toFixed(3)} (L)\n` +
-            `Avg. Temp Tolerance: ${isNaN(stats.avgTempTolerance) ? 'N/A' : stats.avgTempTolerance.toFixed(3)}\n` +
-            `Avg. Feeding Eff: ${isNaN(stats.avgFeedingEff) ? 'N/A' : stats.avgFeedingEff.toFixed(3)} (H)`;
+            `Avg. Prey Metabolism: ${isNaN(stats.avgPreyMetabolism) ? 'N/A' : stats.avgPreyMetabolism.toFixed(3)} (L)\n` +
+            `Avg. Prey Temp Tol: ${isNaN(stats.avgPreyTempTolerance) ? 'N/A' : stats.avgPreyTempTolerance.toFixed(3)}\n` +
+            `Avg. Prey Feeding: ${isNaN(stats.avgPreyFeedingEff) ? 'N/A' : stats.avgPreyFeedingEff.toFixed(3)} (H)`;
+            // Add predator stats display later if needed
     }
 
     /**
@@ -403,12 +412,19 @@ class UIManager {
     }
 
     /** Displays a message indicating the population died out. */
-    showExtinctionMessage() {
+    showExtinctionMessage(message = "Population Extinct") {
         if (this.elements.statsOutput) {
-            this.elements.statsOutput.textContent += "\n\n--- Population Extinct ---";
+            this.elements.statsOutput.textContent += `\n\n--- ${message} ---`;
         }
         // Optionally show an alert or more prominent message
-        // alert("Population Extinct!");
+        // alert(message);
+    }
+
+    // Added for non-critical info messages
+    showInfoMessage(message) {
+         if (this.elements.statsOutput) {
+            this.elements.statsOutput.textContent += `\n\n--- INFO: ${message} ---`;
+        }
     }
 
     /** Displays an error message in the stats area. */
