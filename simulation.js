@@ -17,14 +17,15 @@ class Simulation {
         this.ctx = this.canvas.getContext('2d');
 
         // Simulation state
-        this.organisms = [];
+        this.organisms = []; // Prey population
+        this.predators = []; // Predator population
         this.environment = null;
         this.tick_count = 0;
         this.isRunning = false;
         this.tickInterval = null;
         this.tickSpeed = this.config.tickSpeed || 50; // Use initial config or default
         this.cellSize = this.config.cellSize || 5;   // Use initial config or default
-        this.nextOrganismId = 0;
+        this.nextOrganismId = 0; // Shared ID counter for all creatures
 
         // Resource placement state (managed here, but UI interacts via methods)
         this.resourcePlacementMode = this.config.resourcePlacementMode || 'random';
@@ -170,7 +171,8 @@ class Simulation {
      * @private
      */
     _createInitialPopulation() {
-        this.organisms = [];
+        this.organisms = []; // Clear prey
+        this.predators = []; // Clear predators
         this.nextOrganismId = 0;
         const settings = this.config; // Use current simulation config
 
@@ -178,24 +180,48 @@ class Simulation {
         const totalCells = settings.gridWidth * settings.gridHeight;
         const initialPopNum = Math.max(1, Math.floor(totalCells * (settings.popDensity / 100.0)));
 
-        console.log(`Creating ${initialPopNum} organisms...`);
-
+        console.log(`Creating ${initialPopNum} prey organisms...`);
         for (let i = 0; i < initialPopNum; i++) {
-            // Generate genes with variation around the configured averages
             const genes = {
                 metabolism_efficiency: clamp(getRandom(settings.avgMetabolism - INITIAL_GENE_VARIATION, settings.avgMetabolism + INITIAL_GENE_VARIATION), 0.1, 2.0),
-                temperature_tolerance: clamp(getRandom(settings.avgTempTolerance - 10, settings.avgTempTolerance + 10), -10, 60), // Wider initial range
+                temperature_tolerance: clamp(getRandom(settings.avgTempTolerance - 10, settings.avgTempTolerance + 10), -10, 60),
                 feeding_efficiency: clamp(getRandom(settings.avgFeeding - INITIAL_GENE_VARIATION, settings.avgFeeding + INITIAL_GENE_VARIATION), 0.1, 2.0),
-                // Add other genes here if needed
             };
-            // Assign random location
-            const location = {
-                x: getRandomInt(0, settings.gridWidth - 1),
-                y: getRandomInt(0, settings.gridHeight - 1)
-            };
+            const location = { x: getRandomInt(0, settings.gridWidth - 1), y: getRandomInt(0, settings.gridHeight - 1) };
             this.organisms.push(new Organism(this.nextOrganismId++, genes, location));
         }
-        console.log(`Created initial population of ${this.organisms.length}`);
+        console.log(`Created initial prey population of ${this.organisms.length}`);
+
+        // --- Create Initial Predators ---
+        // TODO: Make initial predator count configurable
+        const initialPredatorNum = Math.max(1, Math.floor(initialPopNum * 0.02)); // e.g., 2% of initial prey pop
+        console.log(`Creating ${initialPredatorNum} predators...`);
+        for (let i = 0; i < initialPredatorNum; i++) {
+            // Define base predator genes (can be adjusted)
+            const predatorGenes = {
+                metabolism_efficiency: 0.8,
+                temperature_tolerance: 25,
+                speed: 1.1,
+                detection_range: 7,
+                hunting_efficiency: 0.6
+            };
+            // Add some variation
+            for (const gene in predatorGenes) {
+                 if (gene === 'detection_range') {
+                     predatorGenes[gene] += getRandom(-1, 1);
+                     predatorGenes[gene] = clamp(predatorGenes[gene], 3, 15); // Clamp range
+                 } else if (gene === 'hunting_efficiency') {
+                     predatorGenes[gene] += getRandom(-0.1, 0.1);
+                     predatorGenes[gene] = clamp(predatorGenes[gene], 0.1, 0.9); // Clamp efficiency
+                 } else {
+                     predatorGenes[gene] *= getRandom(0.9, 1.1); // Apply % variation
+                 }
+            }
+
+            const location = { x: getRandomInt(0, settings.gridWidth - 1), y: getRandomInt(0, settings.gridHeight - 1) };
+            this.predators.push(new Predator(this.nextOrganismId++, predatorGenes, location));
+        }
+        console.log(`Created initial predator population of ${this.predators.length}`);
     }
 
     /**
@@ -206,7 +232,8 @@ class Simulation {
         this.stop(); // Ensure simulation is stopped
 
         this.tick_count = 0;
-        this.organisms = [];
+        this.organisms = []; // Clear prey
+        this.predators = []; // Clear predators
         this.manuallyPlacedNodes = (this.resourcePlacementMode === 'manual' && this.environment)
             ? this.environment.getManuallyPlacedNodes() // Preserve manual nodes if mode is manual
             : [];
@@ -349,78 +376,120 @@ class Simulation {
             // 1. Update Environment
             this.environment.update(this.tick_count);
 
-            // 2. Prepare for Reproduction
-            this.organisms.forEach(org => org.hasReproducedThisTick = false); // Reset flag
-            const newborns = [];
-            const potentialParents = [];
+            // 2. Prepare for Tick Updates
+            const allCreatures = [...this.organisms, ...this.predators];
+            allCreatures.forEach(c => c.hasReproducedThisTick = false); // Reset reproduction flag
 
-            // 3. Update Organisms (Move, Metabolize, Feed, Check Death)
-            // Iterate backwards for safe removal
+            const preyNewborns = [];
+            const preyPotentialParents = [];
+            const huntedPreyIds = new Set(); // Track prey hunted this tick
+
+            // 3. Predator Actions (Update, Hunt)
+            // Build spatial lookup of *prey* for efficient hunting checks
+            const preySpatialLookup = this._buildSpatialLookup(this.organisms);
+
+            for (let i = this.predators.length - 1; i >= 0; i--) {
+                const pred = this.predators[i];
+                // Find prey in the same cell for the hunting attempt
+                const preyInCell = preySpatialLookup[`${pred.location.x},${pred.location.y}`] || [];
+                // Predator update includes movement (seeking prey) and hunting attempts
+                const huntedId = pred.update(this.environment, this.organisms, preyInCell);
+
+                if (huntedId !== null) {
+                    huntedPreyIds.add(huntedId); // Mark prey as hunted
+                }
+
+                if (!pred.alive) {
+                    this.predators.splice(i, 1); // Remove dead predator
+                }
+                // TODO: Add predator reproduction check here later
+            }
+
+            // 4. Prey Actions (Update, Check if Hunted, Reproduction Prep)
             for (let i = this.organisms.length - 1; i >= 0; i--) {
                 const org = this.organisms[i];
-                org.update(this.environment); // Perform actions
+
+                // IMPORTANT: Check if hunted *this tick* before doing anything else
+                if (huntedPreyIds.has(org.id)) {
+                    // Don't update, just remove
+                    this.organisms.splice(i, 1);
+                    continue;
+                }
+
+                // If not hunted, proceed with normal update
+                org.update(this.environment); // Includes move, metabolize, feed, checkDeath
 
                 if (!org.alive) {
-                    // Remove dead organism directly
+                    // Remove naturally dead organism
                     this.organisms.splice(i, 1);
                 } else {
-                    // Check if eligible for reproduction
+                    // Check eligibility for reproduction *after* updates
                     if (org.age >= REPRODUCTION_AGE && org.energy >= REPRODUCTION_ENERGY_THRESHOLD) {
-                        potentialParents.push(org);
+                        preyPotentialParents.push(org);
                     }
                 }
             }
 
-            // 4. Handle Reproduction
-            shuffleArray(potentialParents); // Randomize mating order
-            const spatialLookup = this._buildSpatialLookup(this.organisms); // Build lookup for finding partners
+            // 5. Handle Prey Reproduction
+            shuffleArray(preyPotentialParents); // Randomize mating order
+            // Note: preySpatialLookup was built before prey movement/death this tick, might be slightly outdated.
+            // For performance, we reuse it. Rebuilding it here would be more accurate but slower.
 
-            for (const parentA of potentialParents) {
-                // Check again if alive and hasn't reproduced already this tick
-                if (!parentA.alive || parentA.hasReproducedThisTick) continue;
+            for (const parentA of preyPotentialParents) {
+                // Check again if alive and hasn't reproduced (could have died/been hunted after eligibility check)
+                 if (!parentA.alive || parentA.hasReproducedThisTick) continue;
 
-                const partner = this._findPartner(parentA, spatialLookup);
-                if (partner) {
-                    // Check population limit before creating offspring
-                    if (this.organisms.length + newborns.length < this.config.maxPopulation) {
+                // Find partner requires the lookup of *prey* organisms
+                const partner = this._findPartner(parentA, preySpatialLookup); // Use the prey lookup
+                if (partner && partner.alive && !partner.hasReproducedThisTick) { // Ensure partner is still valid
+                    // Check combined population limit (prey + predators) ? Or just prey limit?
+                    // Let's use combined for now, adjust later if needed.
+                    if (this.organisms.length + this.predators.length + preyNewborns.length < this.config.maxPopulation) {
                         const offspring = parentA.reproduce(partner);
                         offspring.id = this.nextOrganismId++; // Assign unique ID
 
-                        // Deduct energy cost from parents
                         parentA.energy -= ENERGY_COST_OF_REPRODUCTION;
                         partner.energy -= ENERGY_COST_OF_REPRODUCTION;
-
-                        // Mark parents as reproduced for this tick
                         parentA.hasReproducedThisTick = true;
                         partner.hasReproducedThisTick = true;
 
-                        newborns.push(offspring);
+                        preyNewborns.push(offspring);
                     } else {
-                        // Population limit reached, stop trying to reproduce
-                        break;
+                        break; // Population limit reached
                     }
                 }
             }
+            // Add prey newborns to the main list
+            this.organisms.push(...preyNewborns);
 
-            // Add newborns to the main list
-            this.organisms.push(...newborns);
+            // TODO: Add Predator Reproduction Logic here later
 
-            // 5. Update Stats & UI (via UI Manager)
+            // 6. Update Stats & UI
             const currentStats = this._calculateStats();
             if (this.ui) {
                 this.ui.updateUI(this.tick_count, currentStats, this.environment.temperature, this.environment.getTotalResources());
             }
 
-            // 6. Draw Simulation State
+            // 7. Draw Simulation
             this._drawSimulation();
 
-            // 7. Check for Extinction
-            if (this.organisms.length === 0) {
-                console.log("Population died out.");
+            // 8. Check for Extinction
+            const preyAlive = this.organisms.length > 0;
+            const predatorsAlive = this.predators.length > 0;
+
+            if (!preyAlive && !predatorsAlive) {
+                console.log("All life died out.");
                 this.stop();
-                if (this.ui) {
-                    this.ui.showExtinctionMessage();
-                }
+                if (this.ui) this.ui.showExtinctionMessage("All life extinct!");
+            } else if (!preyAlive && predatorsAlive) {
+                console.log("Prey population died out. Predators remain.");
+                // Predators will starve eventually, stop the simulation.
+                this.stop();
+                if (this.ui) this.ui.showExtinctionMessage("Prey extinct! Predators starving...");
+            } else if (preyAlive && !predatorsAlive) {
+                console.log("Predator population died out. Prey remain.");
+                // Simulation continues with only prey
+                if (this.ui) this.ui.showInfoMessage("Predators extinct!"); // Add showInfoMessage to UI?
             }
 
         } catch (e) {
@@ -458,29 +527,32 @@ class Simulation {
      * @returns {Organism|null} A suitable partner or null if none found.
      * @private
      */
-    _findPartner(parentA, spatialLookup) {
+    _findPartner(parentA, spatialLookup) { // Specifically finds Organism partners
+        // Ensure parentA is an Organism (prey)
+        if (!(parentA instanceof Organism)) return null;
+
         const { x: startX, y: startY } = parentA.location;
         const radius = MATING_SEARCH_RADIUS; // From config.js
 
         // Check surrounding cells first
         for (let dx = -radius; dx <= radius; dx++) {
             for (let dy = -radius; dy <= radius; dy++) {
-                if (dx === 0 && dy === 0) continue; // Skip self cell for now
+                if (dx === 0 && dy === 0) continue;
 
-                // Calculate neighbor coordinates with wrap-around
                 const checkX = (startX + dx + this.config.gridWidth) % this.config.gridWidth;
                 const checkY = (startY + dy + this.config.gridHeight) % this.config.gridHeight;
                 const key = `${checkX},${checkY}`;
 
-                if (spatialLookup[key]) {
+                if (spatialLookup[key]) { // spatialLookup should contain only prey
                     for (const potentialPartner of spatialLookup[key]) {
-                        // Check eligibility: different ID, alive, hasn't reproduced, old enough, enough energy
-                        if (potentialPartner.id !== parentA.id &&
+                        // Check eligibility: Must be Organism, different ID, alive, hasn't reproduced, old enough, enough energy
+                        if (potentialPartner instanceof Organism &&
+                            potentialPartner.id !== parentA.id &&
                             potentialPartner.alive &&
                             !potentialPartner.hasReproducedThisTick &&
                             potentialPartner.age >= REPRODUCTION_AGE &&
                             potentialPartner.energy >= REPRODUCTION_ENERGY_THRESHOLD) {
-                            return potentialPartner; // Found a partner
+                            return potentialPartner;
                         }
                     }
                 }
@@ -489,15 +561,16 @@ class Simulation {
 
         // Check own cell if no partner found in surroundings
         const ownCellKey = `${startX},${startY}`;
-        if (spatialLookup[ownCellKey]) {
+        if (spatialLookup[ownCellKey]) { // Check own cell
             for (const potentialPartner of spatialLookup[ownCellKey]) {
-                if (potentialPartner.id !== parentA.id &&
-                    potentialPartner.alive &&
-                    !potentialPartner.hasReproducedThisTick &&
-                    potentialPartner.age >= REPRODUCTION_AGE &&
-                    potentialPartner.energy >= REPRODUCTION_ENERGY_THRESHOLD) {
-                    return potentialPartner; // Found partner in own cell
-                }
+                 if (potentialPartner instanceof Organism &&
+                     potentialPartner.id !== parentA.id &&
+                     potentialPartner.alive &&
+                     !potentialPartner.hasReproducedThisTick &&
+                     potentialPartner.age >= REPRODUCTION_AGE &&
+                     potentialPartner.energy >= REPRODUCTION_ENERGY_THRESHOLD) {
+                     return potentialPartner;
+                 }
             }
         }
 
@@ -509,19 +582,46 @@ class Simulation {
      * @returns {object} An object containing population stats (count, avg genes, allele freqs).
      * @private
      */
-    _calculateStats() {
-        const popSize = this.organisms.length;
+    _calculateStats() { // Calculates stats for both prey and predators if needed
+        const preyPopSize = this.organisms.length;
+        const predatorPopSize = this.predators.length;
         const stats = {
-            population: popSize,
-            avgMetabolism: NaN,
-            avgTempTolerance: NaN,
-            avgFeedingEff: NaN,
-            alleleFreqs: { 'Cold': 0, 'Mid': 0, 'Warm': 0 } // Based on ALLELE_TEMP_BINS from config.js
+            preyPopulation: preyPopSize,
+            predatorPopulation: predatorPopSize,
+            avgPreyMetabolism: NaN,
+            avgPreyTempTolerance: NaN,
+            avgPreyFeedingEff: NaN,
+            preyAlleleFreqs: { 'Cold': 0, 'Mid': 0, 'Warm': 0 }, // Based on ALLELE_TEMP_BINS from config.js
+            // Add predator stats later if needed (e.g., avgSpeed, avgDetection)
         };
 
-        if (popSize === 0) {
-            return stats; // Return default NaN/0 stats if population is zero
+        // Calculate Prey Stats
+        if (preyPopSize > 0) {
+            let totalMetabolism = 0, totalTempTolerance = 0, totalFeedingEff = 0;
+            let counts = { 'Cold': 0, 'Mid': 0, 'Warm': 0 };
+
+            this.organisms.forEach(org => {
+                totalMetabolism += org.genes.metabolism_efficiency;
+                totalTempTolerance += org.genes.temperature_tolerance;
+                totalFeedingEff += org.genes.feeding_efficiency;
+
+                const tempVal = org.genes.temperature_tolerance;
+                if (ALLELE_TEMP_BINS.Cold(tempVal)) counts.Cold++;
+                else if (ALLELE_TEMP_BINS.Mid(tempVal)) counts.Mid++;
+                else if (ALLELE_TEMP_BINS.Warm(tempVal)) counts.Warm++;
+            });
+
+            stats.avgPreyMetabolism = totalMetabolism / preyPopSize;
+            stats.avgPreyTempTolerance = totalTempTolerance / preyPopSize;
+            stats.avgPreyFeedingEff = totalFeedingEff / preyPopSize;
+            for (const bin in stats.preyAlleleFreqs) {
+                stats.preyAlleleFreqs[bin] = counts[bin] / preyPopSize;
+            }
         }
+
+        // TODO: Calculate Predator Stats here if needed
+
+        return stats;
 
         let totalMetabolism = 0, totalTempTolerance = 0, totalFeedingEff = 0;
         let counts = { 'Cold': 0, 'Mid': 0, 'Warm': 0 };
@@ -590,17 +690,31 @@ class Simulation {
             }
         }
 
-        // --- Draw Organisms ---
-        ctx.fillStyle = '#480048'; // Organism color
-        // Calculate size and offset for centering organisms within cells
-        const orgSize = Math.max(1, cellSz * 0.75);
-        const offset = (cellSz - orgSize) / 2;
-
+        // --- Draw Prey Organisms ---
+        ctx.fillStyle = '#480048'; // Prey color (Purple)
+        const preySize = Math.max(1, cellSz * 0.75);
+        const preyOffset = (cellSz - preySize) / 2;
         this.organisms.forEach(org => {
-            if (!org.alive) return; // Don't draw dead organisms
-            const drawX = org.location.x * cellSz + offset;
-            const drawY = org.location.y * cellSz + offset;
-            ctx.fillRect(drawX, drawY, orgSize, orgSize);
+            if (!org.alive) return;
+            const drawX = org.location.x * cellSz + preyOffset;
+            const drawY = org.location.y * cellSz + preyOffset;
+            ctx.fillRect(drawX, drawY, preySize, preySize);
+        });
+
+        // --- Draw Predators ---
+        ctx.fillStyle = '#FF0000'; // Predator color (Red)
+        const predSize = Math.max(1, cellSz * 0.85); // Slightly larger?
+        const predOffset = (cellSz - predSize) / 2;
+        this.predators.forEach(pred => {
+            if (!pred.alive) return;
+            const drawX = pred.location.x * cellSz + predOffset;
+            const drawY = pred.location.y * cellSz + predOffset;
+            // Draw as circle or different shape? For now, square.
+            ctx.fillRect(drawX, drawY, predSize, predSize);
+            // Example: Draw circle instead
+            // ctx.beginPath();
+            // ctx.arc(drawX + predSize / 2, drawY + predSize / 2, predSize / 2, 0, 2 * Math.PI);
+            // ctx.fill();
         });
     }
 }
