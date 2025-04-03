@@ -67,35 +67,77 @@ class Organism {
      * Moves the organism randomly to an adjacent cell (including diagonals) and consumes energy.
      * @private
      */
-    _move(environment) { // Pass environment to access grid/cells
-        const dx = getRandomInt(-1, 1); // Use getRandomInt from utils.js
-        const dy = getRandomInt(-1, 1);
+    _move(environment, predators) { // Accept list of predators
+        let dx = 0;
+        let dy = 0;
+        let fleeing = false;
 
+        // --- Predator Evasion Logic ---
+        // TODO: Make detection range a gene? For now, use a constant.
+        const preyDetectionRange = 4;
+        const preyDetectionRangeSq = preyDetectionRange * preyDetectionRange;
+        let closestPredatorDistSq = Infinity;
+        let escapeVector = { x: 0, y: 0 };
+
+        for (const predator of predators) {
+            if (!predator.alive) continue;
+            const distSq = (this.location.x - predator.location.x)**2 + (this.location.y - predator.location.y)**2;
+
+            if (distSq <= preyDetectionRangeSq) {
+                fleeing = true;
+                // Simple weighted escape vector: move away from closer predators more strongly
+                const weight = 1 / (distSq + 0.1); // Add small value to avoid division by zero
+                escapeVector.x += (this.location.x - predator.location.x) * weight;
+                escapeVector.y += (this.location.y - predator.location.y) * weight;
+
+                if (distSq < closestPredatorDistSq) {
+                    closestPredatorDistSq = distSq;
+                }
+            }
+        }
+
+        if (fleeing) {
+            // Normalize the escape vector roughly to get a direction
+            const magnitude = Math.sqrt(escapeVector.x**2 + escapeVector.y**2);
+            if (magnitude > 0) {
+                // Move directly away from the weighted center of threat
+                dx = Math.round(escapeVector.x / magnitude);
+                dy = Math.round(escapeVector.y / magnitude);
+                // Ensure dx, dy are within -1, 0, 1
+                dx = clamp(dx, -1, 1);
+                dy = clamp(dy, -1, 1);
+            }
+            // If vector is zero (predator exactly on top?), move randomly
+            if (dx === 0 && dy === 0) {
+                dx = getRandomInt(-1, 1);
+                dy = getRandomInt(-1, 1);
+            }
+             // Optional: Increase energy cost when fleeing?
+             // moveCost *= 1.5;
+        } else {
+            // --- Random Movement Logic ---
+            dx = getRandomInt(-1, 1);
+            dy = getRandomInt(-1, 1);
+        }
+
+        // --- Apply Movement ---
         if (dx === 0 && dy === 0) {
             return; // No movement, no cost
         }
 
-        // Calculate potential new location
-        // Note: gridWidth and gridHeight are expected to be globally available from config.js or simulation state
         const nextX = (this.location.x + dx + gridWidth) % gridWidth;
         const nextY = (this.location.y + dy + gridHeight) % gridHeight;
 
-        // Get the cell the organism is moving *into*
         const targetCell = environment.getCell(nextX, nextY);
-        let moveCost = MOVEMENT_ENERGY_COST; // Base cost from config.js
+        let moveCost = MOVEMENT_ENERGY_COST; // Base cost
 
         if (targetCell) {
-            // Apply biome movement cost multiplier
-            moveCost *= targetCell.moveCostMultiplier;
+            moveCost *= targetCell.moveCostMultiplier; // Apply biome cost
         } else {
-            // Should not happen with wrap-around, but handle defensively
             console.warn(`Organism ${this.id} tried to move to invalid cell (${nextX}, ${nextY})`);
         }
 
-        // Deduct energy cost for movement
         this.energy -= moveCost;
-
-        // Update location only after calculating cost based on target cell
         this.location.x = nextX;
         this.location.y = nextY;
     }
@@ -186,11 +228,11 @@ class Organism {
      * @param {Environment} environment - The simulation environment.
      * @returns {null} Currently returns null, could return actions/events later.
      */
-    update(environment) {
+    update(environment, predators) { // Add predators parameter
         if (!this.alive) return null; // Skip updates if dead
 
         this.age++; // Increment age each active tick
-        this._move(environment); // Pass environment
+        this._move(environment, predators); // Pass predators list
         this._metabolize(environment);
         this._feed(environment);
         this._checkDeath(); // Check death after all actions

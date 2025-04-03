@@ -417,7 +417,7 @@ class Simulation {
                 }
 
                 // If not hunted, proceed with normal update
-                org.update(this.environment); // Includes move, metabolize, feed, checkDeath
+                org.update(this.environment, this.predators); // Pass predator list for evasion
 
                 if (!org.alive) {
                     // Remove naturally dead organism
