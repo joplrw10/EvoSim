@@ -182,13 +182,15 @@ class Simulation {
 
         console.log(`Creating ${initialPopNum} prey organisms...`);
         for (let i = 0; i < initialPopNum; i++) {
-            const genes = {
-                metabolism_efficiency: clamp(getRandom(settings.avgMetabolism - INITIAL_GENE_VARIATION, settings.avgMetabolism + INITIAL_GENE_VARIATION), 0.1, 2.0),
-                temperature_tolerance: clamp(getRandom(settings.avgTempTolerance - 10, settings.avgTempTolerance + 10), -10, 60),
-                feeding_efficiency: clamp(getRandom(settings.avgFeeding - INITIAL_GENE_VARIATION, settings.avgFeeding + INITIAL_GENE_VARIATION), 0.1, 2.0),
+            // Pass the *average* values from settings; the Organism constructor
+            // will now create the initial allele pairs based on these averages.
+            const initialPhenotypes = {
+                metabolism_efficiency: settings.avgMetabolism,
+                temperature_tolerance: settings.avgTempTolerance,
+                feeding_efficiency: settings.avgFeeding,
             };
             const location = { x: getRandomInt(0, settings.gridWidth - 1), y: getRandomInt(0, settings.gridHeight - 1) };
-            this.organisms.push(new Organism(this.nextOrganismId++, genes, location));
+            this.organisms.push(new Organism(this.nextOrganismId++, initialPhenotypes, location));
         }
         console.log(`Created initial prey population of ${this.organisms.length}`);
 
@@ -582,71 +584,60 @@ class Simulation {
      * @returns {object} An object containing population stats (count, avg genes, allele freqs).
      * @private
      */
-    _calculateStats() { // Calculates stats for both prey and predators if needed
+    _calculateStats() {
         const preyPopSize = this.organisms.length;
         const predatorPopSize = this.predators.length;
+
+        // Initialize stats object with default values
         const stats = {
             preyPopulation: preyPopSize,
             predatorPopulation: predatorPopSize,
             avgPreyMetabolism: NaN,
             avgPreyTempTolerance: NaN,
             avgPreyFeedingEff: NaN,
-            preyAlleleFreqs: { 'Cold': 0, 'Mid': 0, 'Warm': 0 }, // Based on ALLELE_TEMP_BINS from config.js
-            // Add predator stats later if needed (e.g., avgSpeed, avgDetection)
+            preyAlleleFreqs: { 'Cold': 0, 'Mid': 0, 'Warm': 0 },
+            // Initialize predator stats if needed later
         };
 
-        // Calculate Prey Stats
+        // Calculate Prey Stats only if prey exist
         if (preyPopSize > 0) {
-            let totalMetabolism = 0, totalTempTolerance = 0, totalFeedingEff = 0;
-            let counts = { 'Cold': 0, 'Mid': 0, 'Warm': 0 };
+            let totalMetabolismPhenotype = 0;
+            let totalTempTolerancePhenotype = 0;
+            let totalFeedingEffPhenotype = 0;
+            let alleleCounts = { 'Cold': 0, 'Mid': 0, 'Warm': 0 };
 
             this.organisms.forEach(org => {
-                totalMetabolism += org.genes.metabolism_efficiency;
-                totalTempTolerance += org.genes.temperature_tolerance;
-                totalFeedingEff += org.genes.feeding_efficiency;
+                // Sum phenotypes, not raw gene values (which are now allele pairs)
+                totalMetabolismPhenotype += org.getPhenotype('metabolism_efficiency');
+                totalTempTolerancePhenotype += org.getPhenotype('temperature_tolerance');
+                totalFeedingEffPhenotype += org.getPhenotype('feeding_efficiency');
 
-                const tempVal = org.genes.temperature_tolerance;
-                if (ALLELE_TEMP_BINS.Cold(tempVal)) counts.Cold++;
-                else if (ALLELE_TEMP_BINS.Mid(tempVal)) counts.Mid++;
-                else if (ALLELE_TEMP_BINS.Warm(tempVal)) counts.Warm++;
+                // Classify allele frequency based on the *phenotype*
+                const tempPhenotype = org.getPhenotype('temperature_tolerance');
+                if (ALLELE_TEMP_BINS.Cold(tempPhenotype)) alleleCounts.Cold++;
+                else if (ALLELE_TEMP_BINS.Mid(tempPhenotype)) alleleCounts.Mid++;
+                else if (ALLELE_TEMP_BINS.Warm(tempPhenotype)) alleleCounts.Warm++;
             });
 
-            stats.avgPreyMetabolism = totalMetabolism / preyPopSize;
-            stats.avgPreyTempTolerance = totalTempTolerance / preyPopSize;
-            stats.avgPreyFeedingEff = totalFeedingEff / preyPopSize;
+            // Calculate average phenotypes
+            stats.avgPreyMetabolism = totalMetabolismPhenotype / preyPopSize;
+            stats.avgPreyTempTolerance = totalTempTolerancePhenotype / preyPopSize;
+            stats.avgPreyFeedingEff = totalFeedingEffPhenotype / preyPopSize;
+
+            // Calculate allele phenotype frequencies
             for (const bin in stats.preyAlleleFreqs) {
-                stats.preyAlleleFreqs[bin] = counts[bin] / preyPopSize;
+                stats.preyAlleleFreqs[bin] = alleleCounts[bin] / preyPopSize;
             }
+        } else {
+             // Ensure averages are NaN if no prey
+             stats.avgPreyMetabolism = NaN;
+             stats.avgPreyTempTolerance = NaN;
+             stats.avgPreyFeedingEff = NaN;
+             // Frequencies remain 0
         }
 
-        // TODO: Calculate Predator Stats here if needed
 
-        return stats;
-
-        let totalMetabolism = 0, totalTempTolerance = 0, totalFeedingEff = 0;
-        let counts = { 'Cold': 0, 'Mid': 0, 'Warm': 0 };
-
-        this.organisms.forEach(org => {
-            totalMetabolism += org.genes.metabolism_efficiency;
-            totalTempTolerance += org.genes.temperature_tolerance;
-            totalFeedingEff += org.genes.feeding_efficiency;
-
-            // Classify temperature tolerance allele
-            const tempVal = org.genes.temperature_tolerance;
-            if (ALLELE_TEMP_BINS.Cold(tempVal)) counts.Cold++;
-            else if (ALLELE_TEMP_BINS.Mid(tempVal)) counts.Mid++;
-            else if (ALLELE_TEMP_BINS.Warm(tempVal)) counts.Warm++;
-        });
-
-        // Calculate averages
-        stats.avgMetabolism = totalMetabolism / popSize;
-        stats.avgTempTolerance = totalTempTolerance / popSize;
-        stats.avgFeedingEff = totalFeedingEff / popSize;
-
-        // Calculate frequencies
-        for (const bin in stats.alleleFreqs) {
-            stats.alleleFreqs[bin] = counts[bin] / popSize;
-        }
+        // TODO: Calculate Predator Stats (using phenotypes) here if needed
 
         return stats;
     }

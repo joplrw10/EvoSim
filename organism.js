@@ -5,18 +5,45 @@ class Organism {
     /**
      * Creates a new Organism instance.
      * @param {number} id - Unique identifier for the organism.
-     * @param {object} genes - An object containing gene names and their values.
+     * @param {object} initialGenes - An object containing gene names and their *initial phenotype* values (used to create allele pairs).
      * @param {{x: number, y: number}} location - The initial coordinates of the organism.
      */
-    constructor(id, genes, location) {
+    constructor(id, initialGenes, location) {
         this.id = id;
         this.species = "BaseSpecies"; // Could be evolved later
         this.age = 0;
         this.energy = INITIAL_ENERGY; // From config.js
         this.alive = true;
         this.location = { ...location }; // Ensure it's a copy
-        this.genes = { ...genes };     // Ensure it's a copy
+        // Initialize genotype: Store pairs of alleles for each gene
+        this.genes = {};
+        for (const geneName in initialGenes) {
+            // Create two alleles based on the initial value, adding some variation
+            // This assumes initialGenes provides the target *phenotype* average
+            const baseValue = initialGenes[geneName];
+            // Simple variation: could be more sophisticated (e.g., normal distribution)
+            const variation = INITIAL_GENE_VARIATION * 0.5; // Adjust variation source if needed
+            const allele1 = baseValue + getRandom(-variation, variation);
+            const allele2 = baseValue + getRandom(-variation, variation);
+            // Store the allele pair, ensuring clamping happens later if needed during mutation/inheritance
+            this.genes[geneName] = [allele1, allele2];
+        }
         this.hasReproducedThisTick = false; // Flag to prevent multiple reproductions per tick
+    }
+    /**
+     * Calculates the expressed phenotype for a given gene based on its alleles.
+     * For now, uses simple averaging (additive model).
+     * @param {string} geneName - The name of the gene.
+     * @returns {number} The calculated phenotype value.
+     */
+    getPhenotype(geneName) {
+        if (!this.genes[geneName]) {
+            console.warn(`Gene ${geneName} not found for organism ${this.id}`);
+            return 0; // Or throw error, or return a default
+        }
+        // Simple additive model: average of the two alleles
+        const phenotype = (this.genes[geneName][0] + this.genes[geneName][1]) / 2.0;
+        return phenotype;
     }
 
     /**
@@ -29,13 +56,13 @@ class Organism {
         if (!cell) return; // Should not happen, but safety check
 
         // Base cost adjusted by metabolic efficiency (lower efficiency = higher cost)
-        let cost = BASE_ENERGY_COST_PER_TICK / this.genes.metabolism_efficiency; // From config.js
+        let cost = BASE_ENERGY_COST_PER_TICK / this.getPhenotype('metabolism_efficiency');
 
         // Calculate effective temperature including biome offset
         const effectiveTemperature = environment.temperature + cell.tempOffset;
 
         // Additional cost based on difference between effective temp and organism's tolerance
-        let tempDifference = Math.abs(effectiveTemperature - this.genes.temperature_tolerance);
+        let tempDifference = Math.abs(effectiveTemperature - this.getPhenotype('temperature_tolerance'));
         cost *= (1 + tempDifference * TEMP_PENALTY_FACTOR); // From config.js
 
         this.energy -= cost;
@@ -58,7 +85,7 @@ class Organism {
             const consumed = environment.consumeResourceAt(this.location.x, this.location.y, canConsume);
 
             // Gain energy based on consumed amount and feeding efficiency
-            let energyGained = consumed * FOOD_ENERGY_VALUE * this.genes.feeding_efficiency; // From config.js
+            let energyGained = consumed * FOOD_ENERGY_VALUE * this.getPhenotype('feeding_efficiency');
             this.energy = clamp(this.energy + energyGained, 0, MAX_ENERGY); // Use clamp from utils.js, MAX_ENERGY from config.js
         }
     }
@@ -153,64 +180,90 @@ class Organism {
     }
 
     /**
-     * Creates a mutated copy of the parent's genes.
-     * @param {object} genesToMutate - The genes object to mutate.
-     * @returns {object} A new object with potentially mutated genes.
+     * Mutates the alleles within a given genotype (allele pairs).
+     * @param {object} genotype - The genotype object { geneName: [allele1, allele2], ... } to mutate.
+     * @returns {object} The mutated genotype object.
      * @private
      */
-    _mutateGenes(genesToMutate) {
-        const mutatedGenes = { ...genesToMutate }; // Create a copy
-        // Note: MUTATION_RATE is expected to be globally available from config.js or simulation state
-        const currentMutationRate = MUTATION_RATE;
+    _mutateGenotype(genotype) {
+        const mutatedGenotype = {};
+        const currentMutationRate = MUTATION_RATE; // Global from config.js
 
-        for (const gene in mutatedGenes) {
+        for (const geneName in genotype) {
+            let allele1 = genotype[geneName][0];
+            let allele2 = genotype[geneName][1];
+
+            // Mutate allele 1
             if (Math.random() < currentMutationRate) {
-                let change = getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT); // Use getRandom from utils.js, MUTATION_AMOUNT from config.js
-                mutatedGenes[gene] += change;
-
-                // Clamp gene values to reasonable ranges
-                if (gene === 'metabolism_efficiency' || gene === 'feeding_efficiency') {
-                    mutatedGenes[gene] = clamp(mutatedGenes[gene], 0.1, 2.0); // Use clamp from utils.js
-                } else if (gene === 'temperature_tolerance') {
-                    // Allow wider range for temperature tolerance based on original code
-                    mutatedGenes[gene] = clamp(mutatedGenes[gene], -10, 60); // Use clamp from utils.js
-                }
-                // Add clamping for other genes if introduced later
+                allele1 += getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT);
             }
+            // Mutate allele 2
+            if (Math.random() < currentMutationRate) {
+                allele2 += getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT);
+            }
+
+            // Clamp mutated alleles
+            if (geneName === 'metabolism_efficiency' || geneName === 'feeding_efficiency') {
+                allele1 = clamp(allele1, 0.1, 2.0);
+                allele2 = clamp(allele2, 0.1, 2.0);
+            } else if (geneName === 'temperature_tolerance') {
+                allele1 = clamp(allele1, -10, 60);
+                allele2 = clamp(allele2, -10, 60);
+            }
+            // Add clamping for other genes if needed
+
+            mutatedGenotype[geneName] = [allele1, allele2];
         }
-        return mutatedGenes;
+        return mutatedGenotype;
     }
 
     /**
      * Creates a new offspring organism via sexual reproduction with a partner.
-     * Genes are averaged, then mutated.
+     * Inherits one random allele from each parent per gene, then mutates the resulting genotype.
      * @param {Organism} partner - The organism to reproduce with.
      * @returns {Organism} A new Organism instance (offspring).
      */
     reproduce(partner) {
-        const offspringGenes = {};
+        const offspringGenotype = {};
 
-        // Average genes from both parents
-        for (const gene in this.genes) {
-            // Ensure the partner also has the gene (might differ if species diverge later)
-            if (partner.genes.hasOwnProperty(gene)) {
-                offspringGenes[gene] = (this.genes[gene] + partner.genes[gene]) / 2.0;
+        // Inherit one allele randomly from each parent for each gene
+        for (const geneName in this.genes) {
+            if (partner.genes.hasOwnProperty(geneName)) {
+                const alleleFromParentA = this.genes[geneName][getRandomInt(0, 1)];
+                const alleleFromParentB = partner.genes[geneName][getRandomInt(0, 1)];
+                offspringGenotype[geneName] = [alleleFromParentA, alleleFromParentB];
             } else {
-                // If partner lacks the gene, inherit directly (or handle differently if needed)
-                offspringGenes[gene] = this.genes[gene];
+                // Handle case where partner might lack a gene (e.g., different species later)
+                // For now, just copy from parent A - could be more complex
+                offspringGenotype[geneName] = [...this.genes[geneName]];
             }
         }
 
-        // Mutate the averaged genes
-        const finalOffspringGenes = this._mutateGenes(offspringGenes);
+        // Mutate the inherited genotype
+        const finalOffspringGenotype = this._mutateGenotype(offspringGenotype);
 
         // Offspring starts at the location of parent 'this'
-        const offspringLocation = { ...this.location }; // Copy location
+        const offspringLocation = { ...this.location };
 
-        // Create the new organism.
-        // The ID assignment is handled by the Simulation class which increments a global counter.
-        // We pass a placeholder ID (-1) here.
-        return new Organism(-1, finalOffspringGenes, offspringLocation);
+        // Create the new organism with the final genotype.
+        // The constructor now expects an object representing the *initial phenotype values*
+        // to create its own allele pairs. We need to pass the *genotype* directly,
+        // so we need a way to bypass the constructor's allele generation or add a new constructor path.
+
+        // --- Option 1: Add a flag/different constructor --- (More complex)
+        // --- Option 2: Create with placeholder, then assign genotype --- (Simpler for now)
+
+        // Create offspring with placeholder genes (using phenotype average for simplicity)
+        const placeholderInitialGenes = {};
+        for(const geneName in finalOffspringGenotype) {
+            placeholderInitialGenes[geneName] = (finalOffspringGenotype[geneName][0] + finalOffspringGenotype[geneName][1]) / 2.0;
+        }
+        const offspring = new Organism(-1, placeholderInitialGenes, offspringLocation);
+
+        // Directly assign the calculated genotype to the offspring
+        offspring.genes = finalOffspringGenotype;
+
+        return offspring;
     }
 
     /**
