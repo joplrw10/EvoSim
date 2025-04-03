@@ -25,11 +25,17 @@ class Organism {
      * @private
      */
     _metabolize(environment) {
+        const cell = environment.getCell(this.location.x, this.location.y);
+        if (!cell) return; // Should not happen, but safety check
+
         // Base cost adjusted by metabolic efficiency (lower efficiency = higher cost)
         let cost = BASE_ENERGY_COST_PER_TICK / this.genes.metabolism_efficiency; // From config.js
 
-        // Additional cost based on temperature difference
-        let tempDifference = Math.abs(environment.temperature - this.genes.temperature_tolerance);
+        // Calculate effective temperature including biome offset
+        const effectiveTemperature = environment.temperature + cell.tempOffset;
+
+        // Additional cost based on difference between effective temp and organism's tolerance
+        let tempDifference = Math.abs(effectiveTemperature - this.genes.temperature_tolerance);
         cost *= (1 + tempDifference * TEMP_PENALTY_FACTOR); // From config.js
 
         this.energy -= cost;
@@ -61,19 +67,37 @@ class Organism {
      * Moves the organism randomly to an adjacent cell (including diagonals) and consumes energy.
      * @private
      */
-    _move() {
+    _move(environment) { // Pass environment to access grid/cells
         const dx = getRandomInt(-1, 1); // Use getRandomInt from utils.js
         const dy = getRandomInt(-1, 1);
 
-        // Update location with wrap-around logic (using global gridWidth/gridHeight from config.js)
-        // Note: gridWidth and gridHeight are expected to be globally available from config.js or simulation state
-        this.location.x = (this.location.x + dx + gridWidth) % gridWidth;
-        this.location.y = (this.location.y + dy + gridHeight) % gridHeight;
-
-        // Consume energy if movement occurred
-        if (dx !== 0 || dy !== 0) {
-            this.energy -= MOVEMENT_ENERGY_COST; // From config.js
+        if (dx === 0 && dy === 0) {
+            return; // No movement, no cost
         }
+
+        // Calculate potential new location
+        // Note: gridWidth and gridHeight are expected to be globally available from config.js or simulation state
+        const nextX = (this.location.x + dx + gridWidth) % gridWidth;
+        const nextY = (this.location.y + dy + gridHeight) % gridHeight;
+
+        // Get the cell the organism is moving *into*
+        const targetCell = environment.getCell(nextX, nextY);
+        let moveCost = MOVEMENT_ENERGY_COST; // Base cost from config.js
+
+        if (targetCell) {
+            // Apply biome movement cost multiplier
+            moveCost *= targetCell.moveCostMultiplier;
+        } else {
+            // Should not happen with wrap-around, but handle defensively
+            console.warn(`Organism ${this.id} tried to move to invalid cell (${nextX}, ${nextY})`);
+        }
+
+        // Deduct energy cost for movement
+        this.energy -= moveCost;
+
+        // Update location only after calculating cost based on target cell
+        this.location.x = nextX;
+        this.location.y = nextY;
     }
 
     /**
@@ -166,7 +190,7 @@ class Organism {
         if (!this.alive) return null; // Skip updates if dead
 
         this.age++; // Increment age each active tick
-        this._move();
+        this._move(environment); // Pass environment
         this._metabolize(environment);
         this._feed(environment);
         this._checkDeath(); // Check death after all actions

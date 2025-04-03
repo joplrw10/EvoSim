@@ -1,6 +1,14 @@
 /**
  * Represents the simulation environment, including the grid, resources, and temperature.
  */
+// Define Biome properties
+const BIOME_DEFINITIONS = {
+    PLAINS: { name: "Plains", color: "#a1c45a", tempOffset: 0, moveCostMultiplier: 1.0 },
+    FOREST: { name: "Forest", color: "#228B22", tempOffset: -2, moveCostMultiplier: 1.5 },
+    DESERT: { name: "Desert", color: "#f4a460", tempOffset: +10, moveCostMultiplier: 1.2 },
+    TUNDRA: { name: "Tundra", color: "#add8e6", tempOffset: -15, moveCostMultiplier: 1.3 },
+};
+
 class Environment {
     /**
      * Creates a new Environment instance.
@@ -25,7 +33,7 @@ class Environment {
             console.log(`Generated ${clusterCenters.length} cluster centers.`);
         }
 
-        // Initialize grid cells
+        // Initialize grid cells with biomes
         for (let y = 0; y < this.height; y++) {
             this.grid[y] = [];
             for (let x = 0; x < this.width; x++) {
@@ -47,11 +55,26 @@ class Environment {
                     isNode = Math.random() < nodeDensity;
                 }
 
+                // Determine biome based on quadrant
+                let biome;
+                if (x < this.width / 2 && y < this.height / 2) {
+                    biome = BIOME_DEFINITIONS.TUNDRA; // Top-left
+                } else if (x >= this.width / 2 && y < this.height / 2) {
+                    biome = BIOME_DEFINITIONS.FOREST; // Top-right
+                } else if (x < this.width / 2 && y >= this.height / 2) {
+                    biome = BIOME_DEFINITIONS.PLAINS; // Bottom-left
+                } else {
+                    biome = BIOME_DEFINITIONS.DESERT; // Bottom-right
+                }
+
                 // Create the cell object
                 this.grid[y][x] = {
                     resourceAmount: isNode ? NODE_INITIAL_RESOURCES : NON_NODE_INITIAL_RESOURCES, // From config.js
                     isNode: isNode,
-                    // Add other biome properties here in Phase 3 (e.g., terrain_type)
+                    biomeName: biome.name,
+                    color: biome.color,
+                    tempOffset: biome.tempOffset,
+                    moveCostMultiplier: biome.moveCostMultiplier,
                 };
 
                 // Add to the list of nodes if it is one

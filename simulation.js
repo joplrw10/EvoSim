@@ -563,22 +563,20 @@ class Simulation {
         const height = this.canvas.height;
         const cellSz = this.cellSize; // Use the simulation's cell size
 
-        // --- Draw Background & Resources ---
-        ctx.fillStyle = '#DDDDDD'; // Default background
-        ctx.fillRect(0, 0, width, height);
+        // --- Draw Biome Background ---
+        // Clear canvas (optional, but good practice if layers overlap)
+        // ctx.clearRect(0, 0, width, height); // Or just draw over
 
-        const maxRes = CELL_MAX_RESOURCES; // From config.js
         for (let y = 0; y < this.config.gridHeight; y++) {
             for (let x = 0; x < this.config.gridWidth; x++) {
                 const cell = this.environment.getCell(x, y);
                 if (!cell) continue; // Should not happen in a valid grid
 
-                // Color cell based on resource amount (more green = more resources)
-                const resourceRatio = clamp(cell.resourceAmount / maxRes, 0, 1); // Use clamp from utils.js
-                const greenIntensity = Math.floor(180 + resourceRatio * 75);
-                const baseIntensity = Math.floor(245 - resourceRatio * 45);
-                ctx.fillStyle = `rgb(${baseIntensity - 30}, ${greenIntensity}, ${baseIntensity - 30})`;
+                // Color cell based on its biome color property
+                ctx.fillStyle = cell.color || '#DDDDDD'; // Use biome color or default gray
                 ctx.fillRect(x * cellSz, y * cellSz, cellSz, cellSz);
+
+                // TODO: Optionally overlay resource visualization (e.g., transparency, dots) later
 
                 // Draw border for resource nodes
                 if (cell.isNode) {
