@@ -16,7 +16,7 @@ let MUTATION_RATE = 0.05; // Default mutation rate (percentage/100), updated by 
 const MUTATION_AMOUNT = 0.05; // Max +/- change during mutation
 
 // --- Environment: Temperature ---
-// const TEMP_BASE = 25.0; // No longer used globally, defined per biome
+const TEMP_BASE = 25.0; // Reference temperature, e.g., for 'Medium' phenotype optimum
 // const TEMP_AMPLITUDE = 15.0; // No longer used globally, defined per biome
 // const TEMP_FREQUENCY = 0.001; // Renamed to GLOBAL_SEASONAL_FREQUENCY
 const GLOBAL_SEASONAL_AMPLITUDE = 3.0; // Smaller global fluctuation (e.g., +/- 3 degrees)
