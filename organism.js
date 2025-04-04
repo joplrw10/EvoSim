@@ -1,3 +1,9 @@
+// Define constants based on config.js values (assuming config.js is loaded first)
+const mediumOptimum = TEMP_BASE; // Use global TEMP_BASE as reference for Medium phenotype
+const highOptimum = TEMP_BASE + 10; // Example: High prefers 10 degrees warmer
+const lowOptimum = TEMP_BASE - 10; // Example: Low prefers 10 degrees cooler
+const toleranceRange = 5; // Example: +/- 5 degrees from optimum is ideal
+
 /**
  * Represents a single organism in the simulation.
  */
@@ -97,12 +103,7 @@ class Organism {
         // Let's use thresholds relative to the organism's *phenotype* preference for simplicity.
         // We need reference points. Let's assume 'Medium' prefers TEMP_BASE (from config).
         // 'High' prefers higher, 'Low' prefers lower.
-        const mediumOptimum = TEMP_BASE; // Use global TEMP_BASE as reference for Medium
-        const highOptimum = TEMP_BASE + 10; // Example: High prefers 10 degrees warmer
-        const lowOptimum = TEMP_BASE - 10; // Example: Low prefers 10 degrees cooler
-
-        // Define tolerance ranges (how far from optimum before penalties increase)
-        const toleranceRange = 5; // Example: +/- 5 degrees from optimum is ideal
+        // Optimums and toleranceRange are now defined globally within this file
 
         if (tempPhenotype === 'High') {
             // High phenotype: Penalize if below medium optimum, benefit if above high optimum
