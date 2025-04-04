@@ -593,18 +593,16 @@ class Simulation {
             preyPopulation: preyPopSize,
             predatorPopulation: predatorPopSize,
             avgPreyMetabolism: NaN,
-            // avgPreyTempTolerance: NaN, // Remove average numerical tolerance
             avgPreyFeedingEff: NaN,
-            preyTempPhenotypeFreqs: { 'High': 0, 'Low': 0 }, // Store phenotype frequencies
+            preyTempPhenotypeFreqs: { 'High': 0, 'Medium': 0, 'Low': 0 }, // Added Medium
             // Initialize predator stats if needed later
         };
 
         // Calculate Prey Stats only if prey exist
         if (preyPopSize > 0) {
             let totalMetabolismPhenotype = 0;
-            // let totalTempTolerancePhenotype = 0; // Not needed anymore
             let totalFeedingEffPhenotype = 0;
-            let tempPhenotypeCounts = { 'High': 0, 'Low': 0 };
+            let tempPhenotypeCounts = { 'High': 0, 'Medium': 0, 'Low': 0 }; // Added Medium
 
             this.organisms.forEach(org => {
                 // Sum phenotypes for continuous traits
@@ -612,13 +610,14 @@ class Simulation {
                 totalFeedingEffPhenotype += org.getPhenotype('feeding_efficiency');
 
                 // Count discrete temperature phenotypes
-                const tempPhenotype = org.getPhenotype('temperature_tolerance'); // Returns 'High' or 'Low'
+                const tempPhenotype = org.getPhenotype('temperature_tolerance'); // Returns 'High', 'Medium', or 'Low'
                 if (tempPhenotype === 'High') {
                     tempPhenotypeCounts.High++;
+                } else if (tempPhenotype === 'Medium') { // Count Medium
+                    tempPhenotypeCounts.Medium++;
                 } else if (tempPhenotype === 'Low') {
                     tempPhenotypeCounts.Low++;
                 }
-                // Add 'Medium' count if using incomplete dominance model later
             });
 
             // Calculate average phenotypes for continuous traits
@@ -627,6 +626,7 @@ class Simulation {
 
             // Calculate temperature phenotype frequencies
             stats.preyTempPhenotypeFreqs.High = tempPhenotypeCounts.High / preyPopSize;
+            stats.preyTempPhenotypeFreqs.Medium = tempPhenotypeCounts.Medium / preyPopSize; // Calculate Medium freq
             stats.preyTempPhenotypeFreqs.Low = tempPhenotypeCounts.Low / preyPopSize;
 
         } else {

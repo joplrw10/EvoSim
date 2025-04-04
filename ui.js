@@ -9,7 +9,7 @@ class UIManager {
     constructor(simulationInstance) {
         this.simulation = simulationInstance;
         this.chartInstances = { pop: null, genes: null, resource: null, allele: null };
-        this.simulationHistory = { ticks: [], preyPopulation: [], predatorPopulation: [], totalResources: [], avgPreyMetabolism: [], avgPreyFeedingEff: [], tempPhenotypeHighFreq: [], tempPhenotypeLowFreq: [] }; // Renamed temp tolerance history
+        this.simulationHistory = { ticks: [], preyPopulation: [], predatorPopulation: [], totalResources: [], avgPreyMetabolism: [], avgPreyFeedingEff: [], tempPhenotypeHighFreq: [], tempPhenotypeMediumFreq: [], tempPhenotypeLowFreq: [] }; // Added Medium
 
         // Store references to frequently used DOM elements
         this.elements = {
@@ -154,8 +154,8 @@ class UIManager {
                 datasets: [
                     // Color mapping: High=Red, Low=Blue
                     { label: 'High Temp Phenotype', data: [], borderColor: 'rgb(255, 100, 0)', tension: 0.1, fill: false }, // Was Warm
+                    { label: 'Medium Temp Phenotype', data: [], borderColor: 'rgb(0, 180, 0)', tension: 0.1, fill: false }, // Added Medium (Green)
                     { label: 'Low Temp Phenotype', data: [], borderColor: 'rgb(0, 100, 255)', tension: 0.1, fill: false }  // Was Cold
-                    // Add 'Medium' dataset here if using incomplete dominance later
                 ]
             },
             options: { ...baseChartOptions, plugins: { title: { display: true, text: 'Temp Phenotype Frequencies' }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { min: 0, max: 1, title: { display: true, text: 'Frequency' } } } }
@@ -178,7 +178,7 @@ class UIManager {
         const freqs = stats?.preyTempPhenotypeFreqs; // Optional chaining for safety
         this.simulationHistory.tempPhenotypeHighFreq.push(freqs?.High || 0);
         this.simulationHistory.tempPhenotypeLowFreq.push(freqs?.Low || 0);
-        // Add Medium frequency push if using incomplete dominance later
+        this.simulationHistory.tempPhenotypeMediumFreq.push(freqs?.Medium || 0); // Added Medium push
 
         // Limit history size
         if (this.simulationHistory.ticks.length > MAX_HISTORY) { // MAX_HISTORY from config.js
@@ -209,8 +209,8 @@ class UIManager {
         if (this.chartInstances.allele) {
             this.chartInstances.allele.data.labels = this.simulationHistory.ticks;
             this.chartInstances.allele.data.datasets[0].data = this.simulationHistory.tempPhenotypeHighFreq;
-            this.chartInstances.allele.data.datasets[1].data = this.simulationHistory.tempPhenotypeLowFreq;
-            // Update Medium dataset if added later
+            this.chartInstances.allele.data.datasets[1].data = this.simulationHistory.tempPhenotypeMediumFreq; // Index 1 is now Medium
+            this.chartInstances.allele.data.datasets[2].data = this.simulationHistory.tempPhenotypeLowFreq;  // Index 2 is now Low
             this.chartInstances.allele.update('none');
         }
     }

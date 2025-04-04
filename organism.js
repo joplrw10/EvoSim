@@ -55,16 +55,17 @@ class Organism {
         }
 
         if (geneName === 'temperature_tolerance') {
-            // Dominant/Recessive: H is dominant
-            if (alleles[0] === 'H' || alleles[1] === 'H') {
-                return 'High'; // HH or HL or LH
+            // Dominant/Recessive with Heterozygous 'Medium' phenotype
+            const allele1 = alleles[0];
+            const allele2 = alleles[1];
+
+            if (allele1 === 'H' && allele2 === 'H') {
+                return 'High';
+            } else if (allele1 === 'L' && allele2 === 'L') {
+                return 'Low';
             } else {
-                return 'Low'; // LL
+                return 'Medium'; // HL or LH
             }
-            // --- Alternative: Incomplete Dominance (HL/LH = Medium) ---
-            // if (alleles[0] === 'H' && alleles[1] === 'H') return 'High';
-            // if (alleles[0] === 'L' && alleles[1] === 'L') return 'Low';
-            // return 'Medium'; // HL or LH
         } else {
             // Simple additive model for other genes: average of the two float alleles
             const phenotype = (alleles[0] + alleles[1]) / 2.0;
@@ -88,7 +89,7 @@ class Organism {
         const effectiveTemperature = environment.temperature + cell.tempOffset;
 
         // --- Temperature Penalty based on Phenotype ---
-        const tempPhenotype = this.getPhenotype('temperature_tolerance'); // 'High', 'Low', ('Medium' if using incomplete dominance)
+        const tempPhenotype = this.getPhenotype('temperature_tolerance'); // 'High', 'Medium', 'Low'
         let tempPenaltyMultiplier = 1.0; // Default penalty multiplier
 
         // Define rough temperature zones (adjust thresholds as needed)
@@ -112,13 +113,13 @@ class Organism {
                  tempPenaltyMultiplier = 0.8; // Benefit in low temps
              }
         }
-        // else if (tempPhenotype === 'Medium') { // Only if using incomplete dominance
-        //     if (effectiveTemperature < lowTempThreshold || effectiveTemperature > highTempThreshold) {
-        //         tempPenaltyMultiplier = 1.5; // Moderate penalty in extremes
-        //     } else {
-        //         tempPenaltyMultiplier = 1.0; // No penalty in medium temps
-        //     }
-        // }
+        else if (tempPhenotype === 'Medium') {
+            if (effectiveTemperature < lowTempThreshold || effectiveTemperature > highTempThreshold) {
+                tempPenaltyMultiplier = 1.5; // Moderate penalty in extremes
+            } else {
+                tempPenaltyMultiplier = 1.0; // No penalty in medium temps
+            }
+        }
 
         // Apply base cost penalty factor AND the phenotype multiplier
         // We still need a base penalty for being away from the *absolute* optimum,
@@ -338,14 +339,15 @@ class Organism {
         const placeholderInitialGenes = {};
         for(const geneName in finalOffspringGenotype) {
             if (geneName === 'temperature_tolerance') {
-                 // Determine placeholder phenotype based on inherited genotype
+                 // Determine placeholder phenotype based on inherited genotype (H/L/M)
                  const alleles = finalOffspringGenotype[geneName];
-                 if (alleles[0] === 'H' || alleles[1] === 'H') {
+                 if (alleles[0] === 'H' && alleles[1] === 'H') {
                      placeholderInitialGenes[geneName] = TEMP_BASE + 5; // Placeholder value representing 'High'
-                 } else {
+                 } else if (alleles[0] === 'L' && alleles[1] === 'L') {
                      placeholderInitialGenes[geneName] = TEMP_BASE - 5; // Placeholder value representing 'Low'
+                 } else {
+                      placeholderInitialGenes[geneName] = TEMP_BASE; // Placeholder value representing 'Medium'
                  }
-                 // If using Medium: else { placeholderInitialGenes[geneName] = TEMP_BASE; }
             } else {
                  // Average float alleles for placeholder
                  placeholderInitialGenes[geneName] = (finalOffspringGenotype[geneName][0] + finalOffspringGenotype[geneName][1]) / 2.0;
