@@ -9,7 +9,7 @@ class UIManager {
     constructor(simulationInstance) {
         this.simulation = simulationInstance;
         this.chartInstances = { pop: null, genes: null, resource: null, allele: null };
-        this.simulationHistory = { ticks: [], preyPopulation: [], predatorPopulation: [], totalResources: [], avgPreyMetabolism: [], avgPreyTempTolerance: [], avgPreyFeedingEff: [], freqCold: [], freqMid: [], freqWarm: [] };
+        this.simulationHistory = { ticks: [], preyPopulation: [], predatorPopulation: [], totalResources: [], avgPreyMetabolism: [], avgPreyFeedingEff: [], tempPhenotypeHighFreq: [], tempPhenotypeLowFreq: [] }; // Renamed temp tolerance history
 
         // Store references to frequently used DOM elements
         this.elements = {
@@ -132,7 +132,7 @@ class UIManager {
                 labels: [],
                 datasets: [
                     { label: 'Avg Prey Metabolism Eff', data: [], borderColor: 'rgb(255, 99, 132)', tension: 0.1, }, // Lower is better
-                    { label: 'Avg Prey Temp Tolerance', data: [], borderColor: 'rgb(255, 159, 64)', tension: 0.1, },
+                    // { label: 'Avg Prey Temp Tolerance', data: [], borderColor: 'rgb(255, 159, 64)', tension: 0.1, }, // Removed avg numerical tolerance
                     { label: 'Avg Prey Feeding Eff', data: [], borderColor: 'rgb(153, 102, 255)', tension: 0.1, } // Higher is better
                 ]
             },
@@ -146,18 +146,19 @@ class UIManager {
             options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { ...baseChartOptions.scales.y, title: { text: 'Total Amount' } } } }
         });
 
-        // --- Allele Frequency Chart ---
-        this.chartInstances.allele = new Chart(alleleCtx, {
+        // --- Temperature Phenotype Frequency Chart ---
+        this.chartInstances.allele = new Chart(alleleCtx, { // Reusing 'allele' chart instance ID
             type: 'line',
             data: {
                 labels: [],
                 datasets: [
-                    { label: 'Cold Tolerant', data: [], borderColor: 'rgb(0, 100, 255)', tension: 0.1, fill: false },
-                    { label: 'Mid Range', data: [], borderColor: 'rgb(0, 180, 0)', tension: 0.1, fill: false },
-                    { label: 'Warm Tolerant', data: [], borderColor: 'rgb(255, 100, 0)', tension: 0.1, fill: false }
+                    // Color mapping: High=Red, Low=Blue
+                    { label: 'High Temp Phenotype', data: [], borderColor: 'rgb(255, 100, 0)', tension: 0.1, fill: false }, // Was Warm
+                    { label: 'Low Temp Phenotype', data: [], borderColor: 'rgb(0, 100, 255)', tension: 0.1, fill: false }  // Was Cold
+                    // Add 'Medium' dataset here if using incomplete dominance later
                 ]
             },
-            options: { ...baseChartOptions, plugins: { title: { display: false }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { min: 0, max: 1, title: { display: true, text: 'Frequency' } } } }
+            options: { ...baseChartOptions, plugins: { title: { display: true, text: 'Temp Phenotype Frequencies' }, legend: { display: true } }, scales: { ...baseChartOptions.scales, y: { min: 0, max: 1, title: { display: true, text: 'Frequency' } } } }
         });
 
         console.log("Charts initialized.");
@@ -171,13 +172,13 @@ class UIManager {
         this.simulationHistory.predatorPopulation.push(stats.predatorPopulation);
         this.simulationHistory.totalResources.push(totalResources);
         this.simulationHistory.avgPreyMetabolism.push(stats.avgPreyMetabolism);
-        this.simulationHistory.avgPreyTempTolerance.push(stats.avgPreyTempTolerance);
+        // this.simulationHistory.avgPreyTempTolerance.push(stats.avgPreyTempTolerance); // Removed
         this.simulationHistory.avgPreyFeedingEff.push(stats.avgPreyFeedingEff);
-        // Use preyAlleleFreqs from the stats object, ensuring it exists
-        const freqs = stats?.preyAlleleFreqs; // Optional chaining for stats as well
-        this.simulationHistory.freqCold.push(freqs?.Cold || 0);
-        this.simulationHistory.freqMid.push(freqs?.Mid || 0);
-        this.simulationHistory.freqWarm.push(freqs?.Warm || 0);
+        // Use preyTempPhenotypeFreqs from the stats object
+        const freqs = stats?.preyTempPhenotypeFreqs; // Optional chaining for safety
+        this.simulationHistory.tempPhenotypeHighFreq.push(freqs?.High || 0);
+        this.simulationHistory.tempPhenotypeLowFreq.push(freqs?.Low || 0);
+        // Add Medium frequency push if using incomplete dominance later
 
         // Limit history size
         if (this.simulationHistory.ticks.length > MAX_HISTORY) { // MAX_HISTORY from config.js
@@ -196,7 +197,7 @@ class UIManager {
         if (this.chartInstances.genes) {
             this.chartInstances.genes.data.labels = this.simulationHistory.ticks;
             this.chartInstances.genes.data.datasets[0].data = this.simulationHistory.avgPreyMetabolism;
-            this.chartInstances.genes.data.datasets[1].data = this.simulationHistory.avgPreyTempTolerance;
+            // this.chartInstances.genes.data.datasets[1].data = this.simulationHistory.avgPreyTempTolerance; // Removed
             this.chartInstances.genes.data.datasets[2].data = this.simulationHistory.avgPreyFeedingEff;
             this.chartInstances.genes.update('none');
         }
@@ -207,9 +208,9 @@ class UIManager {
         }
         if (this.chartInstances.allele) {
             this.chartInstances.allele.data.labels = this.simulationHistory.ticks;
-            this.chartInstances.allele.data.datasets[0].data = this.simulationHistory.freqCold;
-            this.chartInstances.allele.data.datasets[1].data = this.simulationHistory.freqMid;
-            this.chartInstances.allele.data.datasets[2].data = this.simulationHistory.freqWarm;
+            this.chartInstances.allele.data.datasets[0].data = this.simulationHistory.tempPhenotypeHighFreq;
+            this.chartInstances.allele.data.datasets[1].data = this.simulationHistory.tempPhenotypeLowFreq;
+            // Update Medium dataset if added later
             this.chartInstances.allele.update('none');
         }
     }
@@ -319,7 +320,7 @@ class UIManager {
             `Total Pop: ${totalPop} / ${this.simulation.config.maxPopulation} (Prey: ${stats.preyPopulation}, Pred: ${stats.predatorPopulation})\n` +
             `Environment Temp: ${temperature.toFixed(1)}°C\n` +
             `Avg. Prey Metabolism: ${isNaN(stats.avgPreyMetabolism) ? 'N/A' : stats.avgPreyMetabolism.toFixed(3)} (L)\n` +
-            `Avg. Prey Temp Tol: ${isNaN(stats.avgPreyTempTolerance) ? 'N/A' : stats.avgPreyTempTolerance.toFixed(3)}\n` +
+            // `Avg. Prey Temp Tol: ${isNaN(stats.avgPreyTempTolerance) ? 'N/A' : stats.avgPreyTempTolerance.toFixed(3)}\n` + // Removed
             `Avg. Prey Feeding: ${isNaN(stats.avgPreyFeedingEff) ? 'N/A' : stats.avgPreyFeedingEff.toFixed(3)} (H)`;
             // Add predator stats display later if needed
     }

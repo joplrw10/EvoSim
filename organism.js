@@ -18,32 +18,58 @@ class Organism {
         // Initialize genotype: Store pairs of alleles for each gene
         this.genes = {};
         for (const geneName in initialGenes) {
-            // Create two alleles based on the initial value, adding some variation
-            // This assumes initialGenes provides the target *phenotype* average
-            const baseValue = initialGenes[geneName];
-            // Simple variation: could be more sophisticated (e.g., normal distribution)
-            const variation = INITIAL_GENE_VARIATION * 0.5; // Adjust variation source if needed
-            const allele1 = baseValue + getRandom(-variation, variation);
-            const allele2 = baseValue + getRandom(-variation, variation);
-            // Store the allele pair, ensuring clamping happens later if needed during mutation/inheritance
-            this.genes[geneName] = [allele1, allele2];
+            if (geneName === 'temperature_tolerance') {
+                // Initialize temperature alleles randomly as 'H' or 'L'
+                const allele1 = Math.random() < 0.5 ? 'H' : 'L';
+                const allele2 = Math.random() < 0.5 ? 'H' : 'L';
+                this.genes[geneName] = [allele1, allele2];
+            } else {
+                // Initialize other genes as float pairs based on average phenotype
+                const baseValue = initialGenes[geneName];
+                const variation = INITIAL_GENE_VARIATION * 0.5;
+                const allele1 = baseValue + getRandom(-variation, variation);
+                const allele2 = baseValue + getRandom(-variation, variation);
+                // Clamp initial float alleles immediately for safety
+                if (geneName === 'metabolism_efficiency' || geneName === 'feeding_efficiency') {
+                     this.genes[geneName] = [clamp(allele1, 0.1, 2.0), clamp(allele2, 0.1, 2.0)];
+                } else {
+                     // Default case if other float genes are added
+                     this.genes[geneName] = [allele1, allele2];
+                }
+            }
         }
         this.hasReproducedThisTick = false; // Flag to prevent multiple reproductions per tick
     }
     /**
      * Calculates the expressed phenotype for a given gene based on its alleles.
-     * For now, uses simple averaging (additive model).
+     * Uses dominant/recessive for temperature_tolerance ('H' dominant over 'L').
+     * Uses averaging for other float-based genes.
      * @param {string} geneName - The name of the gene.
-     * @returns {number} The calculated phenotype value.
+     * @returns {number|string} The calculated phenotype value (string for temp, number for others).
      */
     getPhenotype(geneName) {
-        if (!this.genes[geneName]) {
+        const alleles = this.genes[geneName];
+        if (!alleles) {
             console.warn(`Gene ${geneName} not found for organism ${this.id}`);
-            return 0; // Or throw error, or return a default
+            return geneName === 'temperature_tolerance' ? 'Medium' : 0; // Default phenotype
         }
-        // Simple additive model: average of the two alleles
-        const phenotype = (this.genes[geneName][0] + this.genes[geneName][1]) / 2.0;
-        return phenotype;
+
+        if (geneName === 'temperature_tolerance') {
+            // Dominant/Recessive: H is dominant
+            if (alleles[0] === 'H' || alleles[1] === 'H') {
+                return 'High'; // HH or HL or LH
+            } else {
+                return 'Low'; // LL
+            }
+            // --- Alternative: Incomplete Dominance (HL/LH = Medium) ---
+            // if (alleles[0] === 'H' && alleles[1] === 'H') return 'High';
+            // if (alleles[0] === 'L' && alleles[1] === 'L') return 'Low';
+            // return 'Medium'; // HL or LH
+        } else {
+            // Simple additive model for other genes: average of the two float alleles
+            const phenotype = (alleles[0] + alleles[1]) / 2.0;
+            return phenotype;
+        }
     }
 
     /**
@@ -61,9 +87,50 @@ class Organism {
         // Calculate effective temperature including biome offset
         const effectiveTemperature = environment.temperature + cell.tempOffset;
 
-        // Additional cost based on difference between effective temp and organism's tolerance
-        let tempDifference = Math.abs(effectiveTemperature - this.getPhenotype('temperature_tolerance'));
-        cost *= (1 + tempDifference * TEMP_PENALTY_FACTOR); // From config.js
+        // --- Temperature Penalty based on Phenotype ---
+        const tempPhenotype = this.getPhenotype('temperature_tolerance'); // 'High', 'Low', ('Medium' if using incomplete dominance)
+        let tempPenaltyMultiplier = 1.0; // Default penalty multiplier
+
+        // Define rough temperature zones (adjust thresholds as needed)
+        const lowTempThreshold = TEMP_BASE - TEMP_AMPLITUDE * 0.4; // e.g., 25 - 15*0.4 = 19
+        const highTempThreshold = TEMP_BASE + TEMP_AMPLITUDE * 0.4; // e.g., 25 + 15*0.4 = 31
+
+        if (tempPhenotype === 'High') {
+            if (effectiveTemperature < lowTempThreshold) {
+                tempPenaltyMultiplier = 2.5; // High penalty in cold
+            } else if (effectiveTemperature < highTempThreshold) {
+                 tempPenaltyMultiplier = 1.2; // Slight penalty in medium temps
+            } else {
+                 tempPenaltyMultiplier = 0.8; // Benefit in high temps
+            }
+        } else if (tempPhenotype === 'Low') {
+             if (effectiveTemperature > highTempThreshold) {
+                 tempPenaltyMultiplier = 2.5; // High penalty in heat
+             } else if (effectiveTemperature > lowTempThreshold) {
+                 tempPenaltyMultiplier = 1.2; // Slight penalty in medium temps
+             } else {
+                 tempPenaltyMultiplier = 0.8; // Benefit in low temps
+             }
+        }
+        // else if (tempPhenotype === 'Medium') { // Only if using incomplete dominance
+        //     if (effectiveTemperature < lowTempThreshold || effectiveTemperature > highTempThreshold) {
+        //         tempPenaltyMultiplier = 1.5; // Moderate penalty in extremes
+        //     } else {
+        //         tempPenaltyMultiplier = 1.0; // No penalty in medium temps
+        //     }
+        // }
+
+        // Apply base cost penalty factor AND the phenotype multiplier
+        // We still need a base penalty for being away from the *absolute* optimum,
+        // but the phenotype adjusts *how much* that penalty is.
+        // Let's simplify: the phenotype multiplier directly affects the cost.
+        // A more complex model could adjust the TEMP_PENALTY_FACTOR itself.
+        // Simpler approach: Phenotype multiplier directly scales the base cost part.
+        cost *= tempPenaltyMultiplier;
+
+        // --- Original temp difference penalty (optional, could be removed if multiplier handles it) ---
+        // let tempDifference = Math.abs(effectiveTemperature - TEMP_BASE); // Difference from base optimal?
+        // cost *= (1 + tempDifference * TEMP_PENALTY_FACTOR * tempPenaltyMultiplier);
 
         this.energy -= cost;
     }
@@ -181,6 +248,7 @@ class Organism {
 
     /**
      * Mutates the alleles within a given genotype (allele pairs).
+     * Handles 'H'/'L' flips for temperature and float changes for others.
      * @param {object} genotype - The genotype object { geneName: [allele1, allele2], ... } to mutate.
      * @returns {object} The mutated genotype object.
      * @private
@@ -188,29 +256,40 @@ class Organism {
     _mutateGenotype(genotype) {
         const mutatedGenotype = {};
         const currentMutationRate = MUTATION_RATE; // Global from config.js
+        // Define a separate, likely lower, mutation rate for allele flips
+        const alleleFlipRate = currentMutationRate * 0.2; // e.g., 20% of base mutation rate
 
         for (const geneName in genotype) {
             let allele1 = genotype[geneName][0];
             let allele2 = genotype[geneName][1];
 
-            // Mutate allele 1
-            if (Math.random() < currentMutationRate) {
-                allele1 += getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT);
-            }
-            // Mutate allele 2
-            if (Math.random() < currentMutationRate) {
-                allele2 += getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT);
-            }
+            if (geneName === 'temperature_tolerance') {
+                // Mutate allele 1 (flip H/L)
+                if (Math.random() < alleleFlipRate) {
+                    allele1 = (allele1 === 'H' ? 'L' : 'H');
+                }
+                // Mutate allele 2 (flip H/L)
+                if (Math.random() < alleleFlipRate) {
+                    allele2 = (allele2 === 'H' ? 'L' : 'H');
+                }
+            } else {
+                // Mutate float alleles for other genes
+                // Mutate allele 1
+                if (Math.random() < currentMutationRate) {
+                    allele1 += getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT);
+                }
+                // Mutate allele 2
+                if (Math.random() < currentMutationRate) {
+                    allele2 += getRandom(-MUTATION_AMOUNT, MUTATION_AMOUNT);
+                }
 
-            // Clamp mutated alleles
-            if (geneName === 'metabolism_efficiency' || geneName === 'feeding_efficiency') {
-                allele1 = clamp(allele1, 0.1, 2.0);
-                allele2 = clamp(allele2, 0.1, 2.0);
-            } else if (geneName === 'temperature_tolerance') {
-                allele1 = clamp(allele1, -10, 60);
-                allele2 = clamp(allele2, -10, 60);
+                // Clamp mutated float alleles
+                if (geneName === 'metabolism_efficiency' || geneName === 'feeding_efficiency') {
+                    allele1 = clamp(allele1, 0.1, 2.0);
+                    allele2 = clamp(allele2, 0.1, 2.0);
+                }
+                 // Add clamping for other float genes if needed
             }
-            // Add clamping for other genes if needed
 
             mutatedGenotype[geneName] = [allele1, allele2];
         }
@@ -229,13 +308,13 @@ class Organism {
         // Inherit one allele randomly from each parent for each gene
         for (const geneName in this.genes) {
             if (partner.genes.hasOwnProperty(geneName)) {
+                // Inherit one random allele (could be 'H'/'L' or float) from each parent
                 const alleleFromParentA = this.genes[geneName][getRandomInt(0, 1)];
                 const alleleFromParentB = partner.genes[geneName][getRandomInt(0, 1)];
                 offspringGenotype[geneName] = [alleleFromParentA, alleleFromParentB];
             } else {
-                // Handle case where partner might lack a gene (e.g., different species later)
-                // For now, just copy from parent A - could be more complex
-                offspringGenotype[geneName] = [...this.genes[geneName]];
+                // Fallback if partner lacks the gene (shouldn't happen if same species)
+                offspringGenotype[geneName] = [...this.genes[geneName]]; // Copy from parent A
             }
         }
 
@@ -253,10 +332,24 @@ class Organism {
         // --- Option 1: Add a flag/different constructor --- (More complex)
         // --- Option 2: Create with placeholder, then assign genotype --- (Simpler for now)
 
-        // Create offspring with placeholder genes (using phenotype average for simplicity)
+        // Create offspring with placeholder genes.
+        // For temp tolerance, we can't average 'H'/'L', so use a default or parent A's phenotype.
+        // For others, use the average of the new alleles.
         const placeholderInitialGenes = {};
         for(const geneName in finalOffspringGenotype) {
-            placeholderInitialGenes[geneName] = (finalOffspringGenotype[geneName][0] + finalOffspringGenotype[geneName][1]) / 2.0;
+            if (geneName === 'temperature_tolerance') {
+                 // Determine placeholder phenotype based on inherited genotype
+                 const alleles = finalOffspringGenotype[geneName];
+                 if (alleles[0] === 'H' || alleles[1] === 'H') {
+                     placeholderInitialGenes[geneName] = TEMP_BASE + 5; // Placeholder value representing 'High'
+                 } else {
+                     placeholderInitialGenes[geneName] = TEMP_BASE - 5; // Placeholder value representing 'Low'
+                 }
+                 // If using Medium: else { placeholderInitialGenes[geneName] = TEMP_BASE; }
+            } else {
+                 // Average float alleles for placeholder
+                 placeholderInitialGenes[geneName] = (finalOffspringGenotype[geneName][0] + finalOffspringGenotype[geneName][1]) / 2.0;
+            }
         }
         const offspring = new Organism(-1, placeholderInitialGenes, offspringLocation);
 

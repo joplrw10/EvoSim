@@ -593,45 +593,45 @@ class Simulation {
             preyPopulation: preyPopSize,
             predatorPopulation: predatorPopSize,
             avgPreyMetabolism: NaN,
-            avgPreyTempTolerance: NaN,
+            // avgPreyTempTolerance: NaN, // Remove average numerical tolerance
             avgPreyFeedingEff: NaN,
-            preyAlleleFreqs: { 'Cold': 0, 'Mid': 0, 'Warm': 0 },
+            preyTempPhenotypeFreqs: { 'High': 0, 'Low': 0 }, // Store phenotype frequencies
             // Initialize predator stats if needed later
         };
 
         // Calculate Prey Stats only if prey exist
         if (preyPopSize > 0) {
             let totalMetabolismPhenotype = 0;
-            let totalTempTolerancePhenotype = 0;
+            // let totalTempTolerancePhenotype = 0; // Not needed anymore
             let totalFeedingEffPhenotype = 0;
-            let alleleCounts = { 'Cold': 0, 'Mid': 0, 'Warm': 0 };
+            let tempPhenotypeCounts = { 'High': 0, 'Low': 0 };
 
             this.organisms.forEach(org => {
-                // Sum phenotypes, not raw gene values (which are now allele pairs)
+                // Sum phenotypes for continuous traits
                 totalMetabolismPhenotype += org.getPhenotype('metabolism_efficiency');
-                totalTempTolerancePhenotype += org.getPhenotype('temperature_tolerance');
                 totalFeedingEffPhenotype += org.getPhenotype('feeding_efficiency');
 
-                // Classify allele frequency based on the *phenotype*
-                const tempPhenotype = org.getPhenotype('temperature_tolerance');
-                if (ALLELE_TEMP_BINS.Cold(tempPhenotype)) alleleCounts.Cold++;
-                else if (ALLELE_TEMP_BINS.Mid(tempPhenotype)) alleleCounts.Mid++;
-                else if (ALLELE_TEMP_BINS.Warm(tempPhenotype)) alleleCounts.Warm++;
+                // Count discrete temperature phenotypes
+                const tempPhenotype = org.getPhenotype('temperature_tolerance'); // Returns 'High' or 'Low'
+                if (tempPhenotype === 'High') {
+                    tempPhenotypeCounts.High++;
+                } else if (tempPhenotype === 'Low') {
+                    tempPhenotypeCounts.Low++;
+                }
+                // Add 'Medium' count if using incomplete dominance model later
             });
 
-            // Calculate average phenotypes
+            // Calculate average phenotypes for continuous traits
             stats.avgPreyMetabolism = totalMetabolismPhenotype / preyPopSize;
-            stats.avgPreyTempTolerance = totalTempTolerancePhenotype / preyPopSize;
             stats.avgPreyFeedingEff = totalFeedingEffPhenotype / preyPopSize;
 
-            // Calculate allele phenotype frequencies
-            for (const bin in stats.preyAlleleFreqs) {
-                stats.preyAlleleFreqs[bin] = alleleCounts[bin] / preyPopSize;
-            }
+            // Calculate temperature phenotype frequencies
+            stats.preyTempPhenotypeFreqs.High = tempPhenotypeCounts.High / preyPopSize;
+            stats.preyTempPhenotypeFreqs.Low = tempPhenotypeCounts.Low / preyPopSize;
+
         } else {
              // Ensure averages are NaN if no prey
              stats.avgPreyMetabolism = NaN;
-             stats.avgPreyTempTolerance = NaN;
              stats.avgPreyFeedingEff = NaN;
              // Frequencies remain 0
         }
@@ -681,12 +681,22 @@ class Simulation {
             }
         }
 
-        // --- Draw Prey Organisms ---
-        ctx.fillStyle = '#480048'; // Prey color (Purple)
+        // --- Draw Prey Organisms (Colored by Temp Phenotype) ---
         const preySize = Math.max(1, cellSz * 0.75);
         const preyOffset = (cellSz - preySize) / 2;
         this.organisms.forEach(org => {
             if (!org.alive) return;
+
+            // Determine color based on temperature phenotype
+            const tempPhenotype = org.getPhenotype('temperature_tolerance');
+            if (tempPhenotype === 'High') {
+                ctx.fillStyle = '#E53935'; // Red for High temp adapted
+            } else if (tempPhenotype === 'Low') {
+                ctx.fillStyle = '#1E88E5'; // Blue for Low temp adapted
+            } else { // Should not happen with current dominant model, but include fallback
+                ctx.fillStyle = '#8E44AD'; // Purple fallback/Medium
+            }
+
             const drawX = org.location.x * cellSz + preyOffset;
             const drawY = org.location.y * cellSz + preyOffset;
             ctx.fillRect(drawX, drawY, preySize, preySize);
