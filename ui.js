@@ -198,7 +198,7 @@ class UIManager {
             this.chartInstances.genes.data.labels = this.simulationHistory.ticks;
             this.chartInstances.genes.data.datasets[0].data = this.simulationHistory.avgPreyMetabolism;
             // this.chartInstances.genes.data.datasets[1].data = this.simulationHistory.avgPreyTempTolerance; // Removed
-            this.chartInstances.genes.data.datasets[2].data = this.simulationHistory.avgPreyFeedingEff;
+            this.chartInstances.genes.data.datasets[1].data = this.simulationHistory.avgPreyFeedingEff; // Index was 2, now 1
             this.chartInstances.genes.update('none');
         }
         if (this.chartInstances.resource) {
