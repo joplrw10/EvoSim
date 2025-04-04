@@ -85,36 +85,47 @@ class Organism {
         // Base cost adjusted by metabolic efficiency (lower efficiency = higher cost)
         let cost = BASE_ENERGY_COST_PER_TICK / this.getPhenotype('metabolism_efficiency');
 
-        // Calculate effective temperature including biome offset
-        const effectiveTemperature = environment.temperature + cell.tempOffset;
+        // Use the cell's current temperature, which is calculated by the environment
+        const currentCellTemp = cell.currentTemp;
 
         // --- Temperature Penalty based on Phenotype ---
         const tempPhenotype = this.getPhenotype('temperature_tolerance'); // 'High', 'Medium', 'Low'
         let tempPenaltyMultiplier = 1.0; // Default penalty multiplier
 
         // Define rough temperature zones (adjust thresholds as needed)
-        const lowTempThreshold = TEMP_BASE - TEMP_AMPLITUDE * 0.4; // e.g., 25 - 15*0.4 = 19
-        const highTempThreshold = TEMP_BASE + TEMP_AMPLITUDE * 0.4; // e.g., 25 + 15*0.4 = 31
+        // Define rough temperature zones relative to the *biome's* base temp? Or global base?
+        // Let's use thresholds relative to the organism's *phenotype* preference for simplicity.
+        // We need reference points. Let's assume 'Medium' prefers TEMP_BASE (from config).
+        // 'High' prefers higher, 'Low' prefers lower.
+        const mediumOptimum = TEMP_BASE; // Use global TEMP_BASE as reference for Medium
+        const highOptimum = TEMP_BASE + 10; // Example: High prefers 10 degrees warmer
+        const lowOptimum = TEMP_BASE - 10; // Example: Low prefers 10 degrees cooler
+
+        // Define tolerance ranges (how far from optimum before penalties increase)
+        const toleranceRange = 5; // Example: +/- 5 degrees from optimum is ideal
 
         if (tempPhenotype === 'High') {
-            if (effectiveTemperature < lowTempThreshold) {
+            // High phenotype: Penalize if below medium optimum, benefit if above high optimum
+            if (currentCellTemp < mediumOptimum - toleranceRange) {
                 tempPenaltyMultiplier = 2.5; // High penalty in cold
-            } else if (effectiveTemperature < highTempThreshold) {
+            } else if (currentCellTemp < highOptimum - toleranceRange) {
                  tempPenaltyMultiplier = 1.2; // Slight penalty in medium temps
             } else {
                  tempPenaltyMultiplier = 0.8; // Benefit in high temps
             }
         } else if (tempPhenotype === 'Low') {
-             if (effectiveTemperature > highTempThreshold) {
+            // Low phenotype: Penalize if above medium optimum, benefit if below low optimum
+             if (currentCellTemp > mediumOptimum + toleranceRange) {
                  tempPenaltyMultiplier = 2.5; // High penalty in heat
-             } else if (effectiveTemperature > lowTempThreshold) {
+             } else if (currentCellTemp > lowOptimum + toleranceRange) {
                  tempPenaltyMultiplier = 1.2; // Slight penalty in medium temps
              } else {
                  tempPenaltyMultiplier = 0.8; // Benefit in low temps
              }
         }
         else if (tempPhenotype === 'Medium') {
-            if (effectiveTemperature < lowTempThreshold || effectiveTemperature > highTempThreshold) {
+            // Medium phenotype: Penalize if outside medium range
+            if (currentCellTemp < mediumOptimum - toleranceRange || currentCellTemp > mediumOptimum + toleranceRange) {
                 tempPenaltyMultiplier = 1.5; // Moderate penalty in extremes
             } else {
                 tempPenaltyMultiplier = 1.0; // No penalty in medium temps
@@ -342,11 +353,11 @@ class Organism {
                  // Determine placeholder phenotype based on inherited genotype (H/L/M)
                  const alleles = finalOffspringGenotype[geneName];
                  if (alleles[0] === 'H' && alleles[1] === 'H') {
-                     placeholderInitialGenes[geneName] = TEMP_BASE + 5; // Placeholder value representing 'High'
+                     placeholderInitialGenes[geneName] = mediumOptimum + 5; // Use defined optimum
                  } else if (alleles[0] === 'L' && alleles[1] === 'L') {
-                     placeholderInitialGenes[geneName] = TEMP_BASE - 5; // Placeholder value representing 'Low'
+                     placeholderInitialGenes[geneName] = mediumOptimum - 5; // Use defined optimum
                  } else {
-                      placeholderInitialGenes[geneName] = TEMP_BASE; // Placeholder value representing 'Medium'
+                      placeholderInitialGenes[geneName] = mediumOptimum; // Use defined optimum
                  }
             } else {
                  // Average float alleles for placeholder

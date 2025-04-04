@@ -2,11 +2,13 @@
  * Represents the simulation environment, including the grid, resources, and temperature.
  */
 // Define Biome properties
+// Define Biome properties including base temperature and fluctuation amplitude
 const BIOME_DEFINITIONS = {
-    PLAINS: { name: "Plains", color: "#a1c45a", tempOffset: 0, moveCostMultiplier: 1.0 },
-    FOREST: { name: "Forest", color: "#228B22", tempOffset: -2, moveCostMultiplier: 1.5 },
-    DESERT: { name: "Desert", color: "#f4a460", tempOffset: +10, moveCostMultiplier: 1.2 },
-    TUNDRA: { name: "Tundra", color: "#add8e6", tempOffset: -15, moveCostMultiplier: 1.3 },
+    // Values are examples, adjust for desired simulation behavior
+    PLAINS: { name: "Plains", color: "#a1c45a", baseTemp: 25, tempAmplitude: 8, moveCostMultiplier: 1.0 },
+    FOREST: { name: "Forest", color: "#228B22", baseTemp: 20, tempAmplitude: 5, moveCostMultiplier: 1.5 },
+    DESERT: { name: "Desert", color: "#f4a460", baseTemp: 35, tempAmplitude: 12, moveCostMultiplier: 1.2 },
+    TUNDRA: { name: "Tundra", color: "#add8e6", baseTemp: 5, tempAmplitude: 10, moveCostMultiplier: 1.3 },
 };
 
 class Environment {
@@ -21,7 +23,7 @@ class Environment {
     constructor(gWidth, gHeight, nodeDensity, placementMode, manuallyPlacedNodes = []) {
         this.width = gWidth;
         this.height = gHeight;
-        this.temperature = TEMP_BASE; // From config.js
+        // this.temperature = TEMP_BASE; // Remove global temperature property
         this.grid = []; // 2D array for cell data
         this.resourceNodes = []; // List of {x, y} coordinates for faster node updates
 
@@ -69,12 +71,14 @@ class Environment {
 
                 // Create the cell object
                 this.grid[y][x] = {
-                    resourceAmount: isNode ? NODE_INITIAL_RESOURCES : NON_NODE_INITIAL_RESOURCES, // From config.js
+                    resourceAmount: isNode ? NODE_INITIAL_RESOURCES : NON_NODE_INITIAL_RESOURCES,
                     isNode: isNode,
                     biomeName: biome.name,
                     color: biome.color,
-                    tempOffset: biome.tempOffset,
+                    baseTemp: biome.baseTemp, // Store biome base temp
+                    tempAmplitude: biome.tempAmplitude, // Store biome amplitude
                     moveCostMultiplier: biome.moveCostMultiplier,
+                    currentTemp: biome.baseTemp, // Initialize current temp to base temp
                 };
 
                 // Add to the list of nodes if it is one
@@ -144,24 +148,38 @@ class Environment {
 
     /**
      * Updates the environment state for one simulation tick.
-     * Updates temperature and replenishes resources in node cells.
+     * Calculates the current temperature for each cell based on biome and global seasonal factor.
+     * Replenishes resources in node cells.
      * @param {number} currentTick - The current simulation tick count.
      */
     update(currentTick) {
-        // Update temperature based on a sine wave
-        this.temperature = TEMP_BASE + TEMP_AMPLITUDE * Math.sin(currentTick * TEMP_FREQUENCY); // From config.js
+        // Calculate global seasonal factor (gentle sine wave)
+        // Assumes GLOBAL_SEASONAL_AMPLITUDE and GLOBAL_SEASONAL_FREQUENCY are defined in config.js
+        const globalSeasonalFactor = GLOBAL_SEASONAL_AMPLITUDE * Math.sin(currentTick * GLOBAL_SEASONAL_FREQUENCY);
 
-        // Replenish resources in designated node cells
-        this.resourceNodes.forEach(nodePos => {
-            const cell = this.grid[nodePos.y][nodePos.x];
-            if (cell) { // Should always exist if in resourceNodes
-                cell.resourceAmount = clamp( // Use clamp from utils.js
-                    cell.resourceAmount + NODE_REPLENISH_RATE, // From config.js
-                    0,
-                    CELL_MAX_RESOURCES // From config.js
-                );
+        // Update temperature for each cell and replenish resources
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                const cell = this.grid[y][x];
+                if (!cell) continue;
+
+                // Calculate cell's current temperature
+                // Simple model: Base + Global Seasonal + Biome Fluctuation (using global frequency for now)
+                // Could use a biome-specific frequency later: Math.sin(currentTick * cell.biomeFrequency)
+                const biomeFluctuation = cell.tempAmplitude * Math.sin(currentTick * GLOBAL_SEASONAL_FREQUENCY); // Re-use global freq for biome fluctuation for now
+                cell.currentTemp = cell.baseTemp + globalSeasonalFactor + biomeFluctuation;
+
+                // Replenish resources if it's a node
+                if (cell.isNode) {
+                    cell.resourceAmount = clamp(
+                        cell.resourceAmount + NODE_REPLENISH_RATE,
+                        0,
+                        CELL_MAX_RESOURCES
+                    );
+                }
             }
-        });
+        }
+        // No longer need to update this.temperature
     }
 
     /**

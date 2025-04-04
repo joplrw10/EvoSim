@@ -16,10 +16,12 @@ let MUTATION_RATE = 0.05; // Default mutation rate (percentage/100), updated by 
 const MUTATION_AMOUNT = 0.05; // Max +/- change during mutation
 
 // --- Environment: Temperature ---
-const TEMP_BASE = 25.0; // Average temperature
-const TEMP_AMPLITUDE = 15.0; // Fluctuation range (+/- TEMP_BASE)
-const TEMP_FREQUENCY = 0.001; // Speed of temperature cycle
-const TEMP_PENALTY_FACTOR = 0.03; // Multiplier for energy cost based on temp difference
+// const TEMP_BASE = 25.0; // No longer used globally, defined per biome
+// const TEMP_AMPLITUDE = 15.0; // No longer used globally, defined per biome
+// const TEMP_FREQUENCY = 0.001; // Renamed to GLOBAL_SEASONAL_FREQUENCY
+const GLOBAL_SEASONAL_AMPLITUDE = 3.0; // Smaller global fluctuation (e.g., +/- 3 degrees)
+const GLOBAL_SEASONAL_FREQUENCY = 0.0005; // Slower global cycle
+const TEMP_PENALTY_FACTOR = 0.03; // Base multiplier for energy cost (adjusted by phenotype)
 
 // --- Environment: Resources & Grid ---
 const CELL_MAX_RESOURCES = 15.0; // Max resources a single cell can hold
@@ -34,12 +36,8 @@ const NUM_CLUSTERS = 4; // Number of resource clusters in 'clustered' mode
 const CLUSTER_RADIUS = 12; // Radius of each cluster
 const MIN_CLUSTER_DISTANCE = 35; // Minimum distance between cluster centers
 
-// --- Allele Tracking (Temperature) ---
-const ALLELE_TEMP_BINS = {
-    'Cold': (val) => val < TEMP_BASE - TEMP_AMPLITUDE / 2,
-    'Mid': (val) => val >= TEMP_BASE - TEMP_AMPLITUDE / 2 && val <= TEMP_BASE + TEMP_AMPLITUDE / 2,
-    'Warm': (val) => val > TEMP_BASE + TEMP_AMPLITUDE / 2
-};
+// --- Allele Tracking (Temperature) --- (No longer needed, using phenotype strings)
+// const ALLELE_TEMP_BINS = { ... };
 
 // --- UI & Display ---
 let CELL_SIZE = 5; // Default cell size in pixels, updated by UI
