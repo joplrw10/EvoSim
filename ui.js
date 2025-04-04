@@ -310,15 +310,14 @@ class UIManager {
      * Updates the main statistics display area.
      * @param {number} tick - Current simulation tick.
      * @param {object} stats - Calculated statistics object from Simulation.
-     * @param {number} temperature - Current environment temperature.
      */
-    updateStatsDisplay(tick, stats, temperature) {
+    updateStatsDisplay(tick, stats) { // Removed temperature parameter
         if (!this.elements.statsOutput) return;
         if (!this.elements.statsOutput || !stats) return; // Add null check for stats
         const totalPop = stats.preyPopulation + stats.predatorPopulation;
         this.elements.statsOutput.textContent = `Tick: ${tick}\n` +
             `Total Pop: ${totalPop} / ${this.simulation.config.maxPopulation} (Prey: ${stats.preyPopulation}, Pred: ${stats.predatorPopulation})\n` +
-            `Environment Temp: ${temperature.toFixed(1)}°C\n` +
+            // `Environment Temp: ${temperature.toFixed(1)}°C\n` + // Removed global temp display
             `Avg. Prey Metabolism: ${isNaN(stats.avgPreyMetabolism) ? 'N/A' : stats.avgPreyMetabolism.toFixed(3)} (L)\n` +
             // `Avg. Prey Temp Tol: ${isNaN(stats.avgPreyTempTolerance) ? 'N/A' : stats.avgPreyTempTolerance.toFixed(3)}\n` + // Removed
             `Avg. Prey Feeding: ${isNaN(stats.avgPreyFeedingEff) ? 'N/A' : stats.avgPreyFeedingEff.toFixed(3)} (H)`;
@@ -330,11 +329,10 @@ class UIManager {
      * Called by the Simulation class during its tick or reset methods.
      * @param {number} tick - Current simulation tick.
      * @param {object} stats - Calculated statistics object.
-     * @param {number} temperature - Current environment temperature.
      * @param {number} totalResources - Total resources in the environment.
      */
-    updateUI(tick, stats, temperature, totalResources) {
-        this.updateStatsDisplay(tick, stats, temperature);
+    updateUI(tick, stats, totalResources) { // Removed temperature parameter
+        this.updateStatsDisplay(tick, stats); // Removed temperature parameter
         this._updateHistoryAndCharts(tick, stats, totalResources);
     }
 

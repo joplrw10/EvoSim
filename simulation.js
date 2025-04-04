@@ -268,7 +268,7 @@ class Simulation {
         if (this.ui) {
             this.ui.resetUI(); // Resets charts, stats display, button states etc.
             const initialStats = this._calculateStats();
-            this.ui.updateUI(this.tick_count, initialStats, this.environment.temperature, this.environment.getTotalResources());
+            this.ui.updateUI(this.tick_count, initialStats, this.environment.getTotalResources()); // Removed temperature
             this.ui.setSliderControlsDisabled(false); // Enable controls
         }
 
@@ -469,7 +469,7 @@ class Simulation {
             // 6. Update Stats & UI
             const currentStats = this._calculateStats();
             if (this.ui) {
-                this.ui.updateUI(this.tick_count, currentStats, this.environment.temperature, this.environment.getTotalResources());
+                this.ui.updateUI(this.tick_count, currentStats, this.environment.getTotalResources()); // Removed temperature
             }
 
             // 7. Draw Simulation
