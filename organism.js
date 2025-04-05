@@ -24,13 +24,34 @@ class Organism {
         // Initialize genotype: Store pairs of alleles for each gene
         this.genes = {};
         for (const geneName in initialGenes) {
+            // Handle dominant/recessive genes
             if (geneName === 'temperature_tolerance') {
-                // Initialize temperature alleles randomly as 'H' or 'L'
                 const allele1 = Math.random() < 0.5 ? 'H' : 'L';
                 const allele2 = Math.random() < 0.5 ? 'H' : 'L';
                 this.genes[geneName] = [allele1, allele2];
-            } else {
-                // Initialize other genes as float pairs based on average phenotype
+            } else if (geneName === 'size') {
+                const allele1 = Math.random() < 0.5 ? 'S' : 's';
+                const allele2 = Math.random() < 0.5 ? 'S' : 's';
+                this.genes[geneName] = [allele1, allele2];
+            } else if (geneName === 'speed') {
+                const allele1 = Math.random() < 0.5 ? 'F' : 'f';
+                const allele2 = Math.random() < 0.5 ? 'F' : 'f';
+                this.genes[geneName] = [allele1, allele2];
+            } else if (geneName === 'camouflage') {
+                const allele1 = Math.random() < 0.5 ? 'C' : 'c';
+                const allele2 = Math.random() < 0.5 ? 'C' : 'c';
+                this.genes[geneName] = [allele1, allele2];
+            } else if (geneName === 'reproductive_rate') {
+                const allele1 = Math.random() < 0.5 ? 'R' : 'r';
+                const allele2 = Math.random() < 0.5 ? 'R' : 'r';
+                this.genes[geneName] = [allele1, allele2];
+            } else if (geneName === 'resistance') {
+                const allele1 = Math.random() < 0.5 ? 'D' : 'd';
+                const allele2 = Math.random() < 0.5 ? 'D' : 'd';
+                this.genes[geneName] = [allele1, allele2];
+            }
+            // Handle float-based genes
+            else {
                 const baseValue = initialGenes[geneName];
                 const variation = INITIAL_GENE_VARIATION * 0.5;
                 const allele1 = baseValue + getRandom(-variation, variation);
@@ -60,19 +81,37 @@ class Organism {
             return geneName === 'temperature_tolerance' ? 'Medium' : 0; // Default phenotype
         }
 
+        const allele1 = alleles[0];
+        const allele2 = alleles[1];
+
         if (geneName === 'temperature_tolerance') {
             // Dominant/Recessive with Heterozygous 'Medium' phenotype
-            const allele1 = alleles[0];
-            const allele2 = alleles[1];
-
-            if (allele1 === 'H' && allele2 === 'H') {
-                return 'High';
-            } else if (allele1 === 'L' && allele2 === 'L') {
-                return 'Low';
-            } else {
-                return 'Medium'; // HL or LH
-            }
-        } else {
+            if (allele1 === 'H' && allele2 === 'H') return 'High';
+            if (allele1 === 'L' && allele2 === 'L') return 'Low';
+            return 'Medium'; // HL or LH
+        } else if (geneName === 'size') {
+            // 'S' (Large) is dominant over 's' (Small)
+            if (allele1 === 'S' || allele2 === 'S') return 'Large';
+            return 'Small'; // ss
+        } else if (geneName === 'speed') {
+            // 'F' (Fast) is dominant over 'f' (Slow)
+            if (allele1 === 'F' || allele2 === 'F') return 'Fast';
+            return 'Slow'; // ff
+        } else if (geneName === 'camouflage') {
+            // 'C' (Camouflaged) is dominant over 'c' (Conspicuous)
+            if (allele1 === 'C' || allele2 === 'C') return 'Camouflaged';
+            return 'Conspicuous'; // cc
+        } else if (geneName === 'reproductive_rate') {
+            // 'R' (High) is dominant over 'r' (Low)
+            if (allele1 === 'R' || allele2 === 'R') return 'High';
+            return 'Low'; // rr
+        } else if (geneName === 'resistance') {
+            // 'D' (Resistant) is dominant over 'd' (Susceptible)
+            if (allele1 === 'D' || allele2 === 'D') return 'Resistant';
+            return 'Susceptible'; // dd
+        }
+        // --- Float-based genes ---
+        else {
             // Simple additive model for other genes: average of the two float alleles
             const phenotype = (alleles[0] + alleles[1]) / 2.0;
             return phenotype;
@@ -244,6 +283,16 @@ class Organism {
             console.warn(`Organism ${this.id} tried to move to invalid cell (${nextX}, ${nextY})`);
         }
 
+        // --- Size Phenotype Effect ---
+        const sizePhenotype = this.getPhenotype('size');
+        if (sizePhenotype === 'Large') {
+            moveCost *= 1.1; // Large organisms cost slightly more to move
+        } else if (sizePhenotype === 'Small') {
+            moveCost *= 0.9; // Small organisms cost slightly less
+        }
+        // Ensure cost doesn't go below a minimum threshold? (Optional)
+        // moveCost = Math.max(moveCost, MINIMUM_MOVEMENT_COST);
+
         this.energy -= moveCost;
         this.location.x = nextX;
         this.location.y = nextY;
@@ -254,8 +303,44 @@ class Organism {
      * @private
      */
     _checkDeath() {
-        if (this.energy <= 0 || this.age > MAX_LIFESPAN) { // From config.js
-            this.alive = false;
+        let shouldDie = false;
+        if (this.energy <= 0) {
+            shouldDie = true;
+            // console.log(`Organism ${this.id} starving.`);
+        }
+        if (this.age > MAX_LIFESPAN) { // From config.js
+             shouldDie = true;
+             // console.log(`Organism ${this.id} died of old age.`);
+        }
+
+        if (shouldDie) {
+            // --- Resistance Phenotype Effect ---
+            const resistancePhenotype = this.getPhenotype('resistance');
+            const resistanceCheck = Math.random(); // Roll for resistance/susceptibility
+
+            if (resistancePhenotype === 'Resistant' && resistanceCheck < 0.1) { // e.g., 10% chance to survive lethal condition
+                // console.log(`Organism ${this.id} resisted death!`);
+                // Give a small energy boost to prevent immediate re-death?
+                this.energy = Math.max(this.energy, BASE_ENERGY_COST_PER_TICK * 2); // Give minimal energy
+                // Reset age slightly? Or just let it die next tick if still old? For now, just survive this tick.
+            } else if (resistancePhenotype === 'Susceptible' && resistanceCheck < 0.05) { // e.g., 5% *additional* chance to die even if conditions weren't lethal? No, apply to existing lethal checks.
+                 // Let's rephrase: If susceptible, the chance to resist is lower or non-existent.
+                 // The current logic already makes them die. We need a chance to *avoid* death if resistant.
+                 // Let's adjust:
+                 this.alive = false; // Default: die if conditions met
+
+                 if (resistancePhenotype === 'Resistant' && resistanceCheck < 0.1) { // 10% chance to *ignore* death trigger this tick
+                     this.alive = true; // SURVIVED!
+                     this.energy = Math.max(this.energy, BASE_ENERGY_COST_PER_TICK * 2); // Give minimal energy back if starving
+                     // console.log(`Organism ${this.id} resisted death!`);
+                 }
+                 // If 'Susceptible', they just die as normal (this.alive remains false).
+                 // If neither Resistant nor Susceptible (which shouldn't happen with D/d), they die as normal.
+
+            } else {
+                 // Not resistant or resistance roll failed
+                 this.alive = false;
+            }
         }
     }
 
@@ -276,15 +361,30 @@ class Organism {
             let allele1 = genotype[geneName][0];
             let allele2 = genotype[geneName][1];
 
-            if (geneName === 'temperature_tolerance') {
-                // Mutate allele 1 (flip H/L)
-                if (Math.random() < alleleFlipRate) {
-                    allele1 = (allele1 === 'H' ? 'L' : 'H');
-                }
-                // Mutate allele 2 (flip H/L)
-                if (Math.random() < alleleFlipRate) {
-                    allele2 = (allele2 === 'H' ? 'L' : 'H');
-                }
+            // --- Handle Allele Flipping for Dominant/Recessive Genes ---
+            const isDominantRecessive = ['temperature_tolerance', 'size', 'speed', 'camouflage', 'reproductive_rate', 'resistance'].includes(geneName);
+
+            if (isDominantRecessive) {
+                 // Determine the two possible alleles for this gene
+                 let dominantAllele = '';
+                 let recessiveAllele = '';
+                 switch (geneName) {
+                     case 'temperature_tolerance': dominantAllele = 'H'; recessiveAllele = 'L'; break;
+                     case 'size': dominantAllele = 'S'; recessiveAllele = 's'; break;
+                     case 'speed': dominantAllele = 'F'; recessiveAllele = 'f'; break;
+                     case 'camouflage': dominantAllele = 'C'; recessiveAllele = 'c'; break;
+                     case 'reproductive_rate': dominantAllele = 'R'; recessiveAllele = 'r'; break;
+                     case 'resistance': dominantAllele = 'D'; recessiveAllele = 'd'; break;
+                 }
+
+                 // Mutate allele 1 (flip)
+                 if (Math.random() < alleleFlipRate) {
+                     allele1 = (allele1 === dominantAllele ? recessiveAllele : dominantAllele);
+                 }
+                 // Mutate allele 2 (flip)
+                 if (Math.random() < alleleFlipRate) {
+                     allele2 = (allele2 === dominantAllele ? recessiveAllele : dominantAllele);
+                 }
             } else {
                 // Mutate float alleles for other genes
                 // Mutate allele 1
@@ -348,24 +448,35 @@ class Organism {
         // Create offspring with placeholder genes.
         // For temp tolerance, we can't average 'H'/'L', so use a default or parent A's phenotype.
         // For others, use the average of the new alleles.
-        const placeholderInitialGenes = {};
-        for(const geneName in finalOffspringGenotype) {
-            if (geneName === 'temperature_tolerance') {
-                 // Determine placeholder phenotype based on inherited genotype (H/L/M)
-                 const alleles = finalOffspringGenotype[geneName];
-                 if (alleles[0] === 'H' && alleles[1] === 'H') {
-                     placeholderInitialGenes[geneName] = mediumOptimum + 5; // Use defined optimum
-                 } else if (alleles[0] === 'L' && alleles[1] === 'L') {
-                     placeholderInitialGenes[geneName] = mediumOptimum - 5; // Use defined optimum
-                 } else {
-                      placeholderInitialGenes[geneName] = mediumOptimum; // Use defined optimum
-                 }
-            } else {
-                 // Average float alleles for placeholder
-                 placeholderInitialGenes[geneName] = (finalOffspringGenotype[geneName][0] + finalOffspringGenotype[geneName][1]) / 2.0;
+        // --- Create Offspring ---
+        // The constructor now correctly initializes alleles based on gene name.
+        // We need to pass *some* value for the new genes in initialGenes, but the constructor
+        // will overwrite them with random alleles anyway. Let's pass a default value (e.g., 0)
+        // for the new genes just to satisfy the loop structure, although it's not strictly used
+        // for allele generation for these new genes.
+        // The *correct* genotype is assigned directly after creation.
+
+        // Create a dummy initialGenes object based on the *parent's* genes
+        // This is only needed because the constructor expects it.
+        const dummyInitialGenes = {};
+         for (const geneName in this.genes) {
+             if (['metabolism_efficiency', 'feeding_efficiency'].includes(geneName)) {
+                 // Pass average for float genes
+                 dummyInitialGenes[geneName] = (this.genes[geneName][0] + this.genes[geneName][1]) / 2.0;
+             } else {
+                 // Pass a placeholder for dominant/recessive (value doesn't matter here)
+                 dummyInitialGenes[geneName] = 0; // Or null, or any placeholder
+             }
+         }
+        // Ensure all new genes are present in the dummy object if the parent didn't have them (unlikely but safe)
+        ['size', 'speed', 'camouflage', 'reproductive_rate', 'resistance'].forEach(gene => {
+            if (!dummyInitialGenes.hasOwnProperty(gene)) {
+                dummyInitialGenes[gene] = 0;
             }
-        }
-        const offspring = new Organism(-1, placeholderInitialGenes, offspringLocation);
+        });
+
+
+        const offspring = new Organism(-1, dummyInitialGenes, offspringLocation);
 
         // Directly assign the calculated genotype to the offspring
         offspring.genes = finalOffspringGenotype;

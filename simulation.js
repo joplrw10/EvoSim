@@ -184,10 +184,17 @@ class Simulation {
         for (let i = 0; i < initialPopNum; i++) {
             // Pass the *average* values from settings; the Organism constructor
             // will now create the initial allele pairs based on these averages.
+            // Pass placeholder values for dominant/recessive genes; the constructor handles allele assignment.
+            // Pass average values for float-based genes.
             const initialPhenotypes = {
-                metabolism_efficiency: settings.avgMetabolism,
-                temperature_tolerance: settings.avgTempTolerance,
-                feeding_efficiency: settings.avgFeeding,
+                metabolism_efficiency: settings.avgMetabolism, // Float-based
+                temperature_tolerance: 0, // Dominant/Recessive (value ignored)
+                feeding_efficiency: settings.avgFeeding, // Float-based
+                size: 0, // Dominant/Recessive (value ignored)
+                speed: 0, // Dominant/Recessive (value ignored)
+                camouflage: 0, // Dominant/Recessive (value ignored)
+                reproductive_rate: 0, // Dominant/Recessive (value ignored)
+                resistance: 0, // Dominant/Recessive (value ignored)
             };
             const location = { x: getRandomInt(0, settings.gridWidth - 1), y: getRandomInt(0, settings.gridHeight - 1) };
             this.organisms.push(new Organism(this.nextOrganismId++, initialPhenotypes, location));
@@ -425,8 +432,20 @@ class Simulation {
                     // Remove naturally dead organism
                     this.organisms.splice(i, 1);
                 } else {
-                    // Check eligibility for reproduction *after* updates
-                    if (org.age >= REPRODUCTION_AGE && org.energy >= REPRODUCTION_ENERGY_THRESHOLD) {
+                    // Check eligibility for reproduction *after* updates, considering reproductive_rate
+                    const reproPhenotype = org.getPhenotype('reproductive_rate');
+                    let effectiveReproductionAge = REPRODUCTION_AGE;
+                    // Define a slight adjustment factor, maybe from config later?
+                    const ageAdjustment = 2;
+
+                    if (reproPhenotype === 'High') {
+                        effectiveReproductionAge = Math.max(1, REPRODUCTION_AGE - ageAdjustment); // Ensure age doesn't go below 1
+                    } else if (reproPhenotype === 'Low') {
+                        effectiveReproductionAge = REPRODUCTION_AGE + ageAdjustment;
+                    }
+                    // Note: Energy threshold isn't adjusted by this gene in this implementation
+
+                    if (org.age >= effectiveReproductionAge && org.energy >= REPRODUCTION_ENERGY_THRESHOLD) {
                         preyPotentialParents.push(org);
                     }
                 }
@@ -450,8 +469,25 @@ class Simulation {
                         const offspring = parentA.reproduce(partner);
                         offspring.id = this.nextOrganismId++; // Assign unique ID
 
-                        parentA.energy -= ENERGY_COST_OF_REPRODUCTION;
-                        partner.energy -= ENERGY_COST_OF_REPRODUCTION;
+                        // Adjust energy cost based on each parent's reproductive_rate phenotype
+                        const costAdjustmentFactor = 0.1; // e.g., 10% adjustment
+                        let costParentA = ENERGY_COST_OF_REPRODUCTION;
+                        let costParentB = ENERGY_COST_OF_REPRODUCTION;
+
+                        if (parentA.getPhenotype('reproductive_rate') === 'High') {
+                            costParentA *= (1.0 - costAdjustmentFactor);
+                        } else if (parentA.getPhenotype('reproductive_rate') === 'Low') {
+                            costParentA *= (1.0 + costAdjustmentFactor);
+                        }
+
+                        if (partner.getPhenotype('reproductive_rate') === 'High') {
+                            costParentB *= (1.0 - costAdjustmentFactor);
+                        } else if (partner.getPhenotype('reproductive_rate') === 'Low') {
+                            costParentB *= (1.0 + costAdjustmentFactor);
+                        }
+
+                        parentA.energy -= costParentA;
+                        partner.energy -= costParentB;
                         parentA.hasReproducedThisTick = true;
                         partner.hasReproducedThisTick = true;
 
@@ -594,7 +630,12 @@ class Simulation {
             predatorPopulation: predatorPopSize,
             avgPreyMetabolism: NaN,
             avgPreyFeedingEff: NaN,
-            preyTempPhenotypeFreqs: { 'High': 0, 'Medium': 0, 'Low': 0 }, // Added Medium
+            preyTempPhenotypeFreqs: { 'High': 0, 'Medium': 0, 'Low': 0 },
+            preySizePhenotypeFreqs: { 'Large': 0, 'Small': 0 },
+            preySpeedPhenotypeFreqs: { 'Fast': 0, 'Slow': 0 },
+            preyCamouflagePhenotypeFreqs: { 'Camouflaged': 0, 'Conspicuous': 0 },
+            preyReproRatePhenotypeFreqs: { 'High': 0, 'Low': 0 },
+            preyResistancePhenotypeFreqs: { 'Resistant': 0, 'Susceptible': 0 },
             // Initialize predator stats if needed later
         };
 
@@ -602,7 +643,12 @@ class Simulation {
         if (preyPopSize > 0) {
             let totalMetabolismPhenotype = 0;
             let totalFeedingEffPhenotype = 0;
-            let tempPhenotypeCounts = { 'High': 0, 'Medium': 0, 'Low': 0 }; // Added Medium
+            let tempPhenotypeCounts = { 'High': 0, 'Medium': 0, 'Low': 0 };
+            let sizePhenotypeCounts = { 'Large': 0, 'Small': 0 };
+            let speedPhenotypeCounts = { 'Fast': 0, 'Slow': 0 };
+            let camouflagePhenotypeCounts = { 'Camouflaged': 0, 'Conspicuous': 0 };
+            let reproRatePhenotypeCounts = { 'High': 0, 'Low': 0 };
+            let resistancePhenotypeCounts = { 'Resistant': 0, 'Susceptible': 0 };
 
             this.organisms.forEach(org => {
                 // Sum phenotypes for continuous traits
@@ -611,33 +657,60 @@ class Simulation {
 
                 // Count discrete temperature phenotypes
                 const tempPhenotype = org.getPhenotype('temperature_tolerance'); // Returns 'High', 'Medium', or 'Low'
-                if (tempPhenotype === 'High') {
-                    tempPhenotypeCounts.High++;
-                } else if (tempPhenotype === 'Medium') { // Count Medium
-                    tempPhenotypeCounts.Medium++;
-                } else if (tempPhenotype === 'Low') {
-                    tempPhenotypeCounts.Low++;
+                if (tempPhenotypeCounts.hasOwnProperty(tempPhenotype)) {
+                    tempPhenotypeCounts[tempPhenotype]++;
                 }
+
+                // Count other discrete phenotypes
+                const sizePhenotype = org.getPhenotype('size');
+                if (sizePhenotypeCounts.hasOwnProperty(sizePhenotype)) {
+                    sizePhenotypeCounts[sizePhenotype]++;
+                }
+                const speedPhenotype = org.getPhenotype('speed');
+                 if (speedPhenotypeCounts.hasOwnProperty(speedPhenotype)) {
+                     speedPhenotypeCounts[speedPhenotype]++;
+                 }
+                const camouflagePhenotype = org.getPhenotype('camouflage');
+                 if (camouflagePhenotypeCounts.hasOwnProperty(camouflagePhenotype)) {
+                     camouflagePhenotypeCounts[camouflagePhenotype]++;
+                 }
+                const reproRatePhenotype = org.getPhenotype('reproductive_rate');
+                 if (reproRatePhenotypeCounts.hasOwnProperty(reproRatePhenotype)) {
+                     reproRatePhenotypeCounts[reproRatePhenotype]++;
+                 }
+                const resistancePhenotype = org.getPhenotype('resistance');
+                 if (resistancePhenotypeCounts.hasOwnProperty(resistancePhenotype)) {
+                     resistancePhenotypeCounts[resistancePhenotype]++;
+                 }
             });
 
-            // Calculate average phenotypes for continuous traits
+            // Calculate averages for continuous traits
             stats.avgPreyMetabolism = totalMetabolismPhenotype / preyPopSize;
             stats.avgPreyFeedingEff = totalFeedingEffPhenotype / preyPopSize;
 
-            // Calculate temperature phenotype frequencies
-            stats.preyTempPhenotypeFreqs.High = tempPhenotypeCounts.High / preyPopSize;
-            stats.preyTempPhenotypeFreqs.Medium = tempPhenotypeCounts.Medium / preyPopSize; // Calculate Medium freq
-            stats.preyTempPhenotypeFreqs.Low = tempPhenotypeCounts.Low / preyPopSize;
-
-        } else {
-             // Ensure averages are NaN if no prey
-             stats.avgPreyMetabolism = NaN;
-             stats.avgPreyFeedingEff = NaN;
-             // Frequencies remain 0
+            // Calculate frequencies for discrete traits
+            for (const phenotype in tempPhenotypeCounts) {
+                stats.preyTempPhenotypeFreqs[phenotype] = tempPhenotypeCounts[phenotype] / preyPopSize;
+            }
+            for (const phenotype in sizePhenotypeCounts) {
+                stats.preySizePhenotypeFreqs[phenotype] = sizePhenotypeCounts[phenotype] / preyPopSize;
+            }
+            for (const phenotype in speedPhenotypeCounts) {
+                stats.preySpeedPhenotypeFreqs[phenotype] = speedPhenotypeCounts[phenotype] / preyPopSize;
+            }
+            for (const phenotype in camouflagePhenotypeCounts) {
+                stats.preyCamouflagePhenotypeFreqs[phenotype] = camouflagePhenotypeCounts[phenotype] / preyPopSize;
+            }
+            for (const phenotype in reproRatePhenotypeCounts) {
+                stats.preyReproRatePhenotypeFreqs[phenotype] = reproRatePhenotypeCounts[phenotype] / preyPopSize;
+            }
+            for (const phenotype in resistancePhenotypeCounts) {
+                stats.preyResistancePhenotypeFreqs[phenotype] = resistancePhenotypeCounts[phenotype] / preyPopSize;
+            }
         }
+        // else: Keep default NaN/zero values if preyPopSize is 0
 
-
-        // TODO: Calculate Predator Stats (using phenotypes) here if needed
+        // TODO: Calculate Predator Stats if needed
 
         return stats;
     }
